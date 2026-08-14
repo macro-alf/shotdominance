@@ -1,0 +1,18 @@
+# runtime artefacts
+logs/
+blotter.csv
+state3.json
+review_rows.csv
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+venv/
+
+# secrets - never commit the API key / bot token
+.env
