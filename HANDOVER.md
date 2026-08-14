@@ -41,11 +41,12 @@ Signal logic
   - **Favourite behind** (0-1, 1-2, …): the tradeable market becomes the
     **double chance** — favourite win *or* draw (**1X** for a home favourite,
     **X2** for an away one). That double-chance price must be **1.75–4.00** (same
-    band). Taken live from the feed when offered, otherwise **derived** from the
-    opponent's live win odds: `dc = 1 / (1 − 1/opp_win_odds)` (this inherits the
-    book's margin and is flagged "derived odds" in the alert). Note the same
-    1.75–4.00 band means a behind-signal only fires when the leading opponent's
-    live win odds sit ~1.33–2.33.
+    band). Taken live from the feed when offered, otherwise **derived** by
+    combining the two winning legs: `dc = 1 / (1/fav_win + 1/draw)` (1X from
+    Home+Draw, X2 from Away+Draw). This carries the same 1x2 margin as the
+    outright prices, so it reproduces the feed's own live DC to ~1% (verified
+    against `/odds/live`); it is flagged "derived odds" in the alert. If the
+    Draw price is absent the condition is skipped rather than guessed.
   - If no usable live price is available the condition is **skipped**, not
     failed, and the alert still fires.
   - Sizing uses whichever price applies, and the blotter records the `market`

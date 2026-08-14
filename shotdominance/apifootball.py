@@ -181,13 +181,15 @@ def signal_price(fx_prices, side, behind):
     - Favourite level (not behind): back it to WIN -> its live win odds.
     - Favourite behind: back the DOUBLE CHANCE (win or draw) -> 1X for a home
       favourite, X2 for an away one. Taken live if the feed offers it, else
-      DERIVED from the opponent's live win odds:
+      DERIVED by combining the two winning legs' implied probabilities:
 
-          P(fav win or draw) = 1 - P(underdog win) = 1 - 1/opp_win_odds
-          dc_odds            = 1 / P(fav win or draw)
+          1/dc_odds = 1/fav_win_odds + 1/draw_odds
+          dc_odds   = 1 / (1/fav_win_odds + 1/draw_odds)
 
-      (This inherits the bookmaker margin embedded in the opponent's odds; it is
-      an estimate, not a fair price, and is flagged as derived.)
+      i.e. 1X from Home+Draw, X2 from Away+Draw. This carries the same 1x2
+      margin as the outright prices, so it reproduces the feed's own live DC
+      closely (verified to ~1% against /odds/live). It is still an estimate and
+      is flagged as derived.
 
     Returns {price, market, kind, derived}. price is None when nothing is
     available - the caller then SKIPS the price condition rather than failing it.
@@ -202,11 +204,12 @@ def signal_price(fx_prices, side, behind):
     if live is not None:
         return {"price": live, "market": key, "kind": "dc", "derived": False}
 
-    opp = fx.get("Away" if side == "home" else "Home")   # the underdog's win odds
-    if opp and opp > 1.0:
-        p_under = 1.0 / opp
-        if 0.0 < p_under < 1.0:
-            return {"price": 1.0 / (1.0 - p_under), "market": key, "kind": "dc",
+    fav_win = fx.get("Home" if side == "home" else "Away")  # the favourite's win odds
+    draw = fx.get("Draw")
+    if fav_win and draw and fav_win > 0 and draw > 0:
+        denom = 1.0 / fav_win + 1.0 / draw
+        if denom > 0:
+            return {"price": 1.0 / denom, "market": key, "kind": "dc",
                     "derived": True}
     return {"price": None, "market": key, "kind": "dc", "derived": False}
 

@@ -52,20 +52,28 @@ def test_behind_prefers_live_double_chance():
     assert r["kind"] == "dc" and r["derived"] is False
 
 
-def test_behind_derives_dc_from_underdog_odds():
-    # home favourite behind, no live DC; underdog (away) win odds = 1.5
-    # P(underdog)=1/1.5=0.667 -> P(win or draw)=0.333 -> dc odds = 3.0
-    fx = {"Home": 6.0, "Away": 1.5}
+def test_behind_derives_dc_from_home_and_draw():
+    # home favourite behind, no live DC; derive 1X from Home + Draw:
+    # 1/dc = 1/4 + 1/4 = 0.5 -> dc = 2.0
+    fx = {"Home": 4.0, "Away": 1.6, "Draw": 4.0}
     r = apifootball.signal_price(fx, "home", behind=True)
     assert r["market"] == "1X" and r["kind"] == "dc" and r["derived"] is True
-    assert abs(r["price"] - 3.0) < 1e-9
+    assert abs(r["price"] - 2.0) < 1e-9
 
 
-def test_away_favourite_behind_uses_x2_and_home_underdog():
-    fx = {"Home": 1.5, "Away": 6.0}          # away fav behind; underdog=home=1.5
+def test_away_favourite_behind_derives_x2_from_away_and_draw():
+    # away favourite behind; derive X2 from Away + Draw: 1/2.875 + 1/3.75
+    fx = {"Home": 1.6, "Away": 2.875, "Draw": 3.75}
     r = apifootball.signal_price(fx, "away", behind=True)
-    assert r["market"] == "X2"
-    assert abs(r["price"] - 3.0) < 1e-9
+    assert r["market"] == "X2" and r["derived"] is True
+    assert abs(r["price"] - 1.0 / (1.0 / 2.875 + 1.0 / 3.75)) < 1e-9
+
+
+def test_behind_derivation_needs_draw():
+    # no live DC and no Draw price -> cannot derive -> price None (condition skipped)
+    fx = {"Home": 4.0, "Away": 1.6}
+    r = apifootball.signal_price(fx, "home", behind=True)
+    assert r["price"] is None and r["kind"] == "dc"
 
 
 def test_behind_with_no_prices_yields_none():
