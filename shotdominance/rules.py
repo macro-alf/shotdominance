@@ -36,6 +36,7 @@ class Evaluation:
     conv: float
     vol_met: int
     mom_met: int
+    n_present: int          # metrics with data (the denominator; 3 when xG absent)
     vol_det: List[str]
     mom_det: List[str]
     extra: List[str]
@@ -145,9 +146,13 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
         extra = ["%dx bar: %s" % (mult, "  ".join(hard_det))]
 
     conv = (0.55 * score(vol_r) + 0.30 * score(mom_r) + 0.15 * dom_score(vol_d))
+    # how many of the four metrics actually have data - when xG is missing this
+    # is 3, so the requirement is "NEED of 3" rather than "NEED of 4".
+    n_present = sum(1 for k in config.KEYS if fav.get(k) is not None)
     return Evaluation(
         ok=ok, basis=basis, approx=approx, conv=round(conv, 1),
-        vol_met=vol_met, mom_met=mom_met, vol_det=vol_det, mom_det=mom_det,
+        vol_met=vol_met, mom_met=mom_met, n_present=n_present,
+        vol_det=vol_det, mom_det=mom_det,
         extra=extra, s_vol=round(score(vol_r), 1), s_mom=round(score(mom_r), 1),
         s_dom=round(dom_score(vol_d), 1), vol_th=vol_th, mom_th=mom_th)
 

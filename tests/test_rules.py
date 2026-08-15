@@ -115,6 +115,18 @@ def test_scored_case_is_either_or():
 
 
 # --- checkpoints ------------------------------------------------------------
+def test_evaluate_reports_present_metric_count():
+    # xG absent -> denominator 3 (the rule becomes "NEED of 3")
+    fav_no_xg = {"xg": None, "shots": 30, "sot": 9, "box": 15}
+    opp = {"xg": None, "shots": 1, "sot": 0, "box": 0}
+    ev = rules.evaluate({}, "9", 75, fav_no_xg, opp, fav_goals=0)
+    assert ev.n_present == 3
+    # all four present -> denominator 4
+    fav_all = {"xg": 3.0, "shots": 30, "sot": 9, "box": 15}
+    ev2 = rules.evaluate({}, "9", 75, fav_all, opp, fav_goals=0)
+    assert ev2.n_present == 4
+
+
 def test_due_checkpoint_only_latest_fires():
     done = set()
     # at 63' the reached checkpoints are 45/50/55/60; only 60 is returned and

@@ -45,6 +45,11 @@ DOM_RATIO = _f("DOM_RATIO", 0.50)
 # 50, double-threshold -> 100.
 CONV_CAP = _f("CONV_CAP", 2.0)
 
+# a signal must reach at least this conviction to fire at all, and a live signal
+# only re-fires when its conviction exceeds the highest already alerted for that
+# fixture (no nagging on a deteriorating situation).
+CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 50.0)
+
 # --- live price band (favourite to win) -------------------------------------
 PRICE_FLOOR = _f("PRICE_FLOOR", 1.75)
 PRICE_CEIL = _f("PRICE_CEIL", 4.00)
@@ -71,6 +76,11 @@ EDGE = [(1.70, .049), (1.85, .062), (2.00, .073), (2.15, .077),
 # --- polling / pacing -------------------------------------------------------
 POLL_SECONDS = _i("POLL_SECONDS", 60)
 REQ_PER_MIN = _f("REQ_PER_MIN", 100)
+
+# live odds flicker in and out (blocked/suspended) between polls; reuse the last
+# seen price for a fixture for up to this many seconds so a momentary gap does
+# not drop the price at the decisive checkpoint.
+PRICE_CARRY_TTL = _f("PRICE_CARRY_TTL", 180.0)
 
 # --- files ------------------------------------------------------------------
 BLOTTER_PATH = os.getenv("BLOTTER", "blotter.csv")

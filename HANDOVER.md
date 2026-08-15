@@ -28,9 +28,13 @@ A metric counts as **realised** only if BOTH:
 1. value ≥ its threshold, AND
 2. opponent's value on that same metric ≤ **50%** of ours (`DOM_RATIO`)
 
+The requirement is **≥2 of the metrics that have data**, not always "of 4": when
+xG is absent for a match (common — see known-issue #1) the rule becomes **2 of
+3** and the console/alert print the true denominator (`vol=2/3`).
+
 Signal logic
-- **Favourite has not scored** (0-0, 0-1, …): need ≥2 of 4 on volume **AND**
-  ≥2 of 4 on momentum. An incomplete momentum window (`~`) blocks the signal.
+- **Favourite has not scored** (0-0, 0-1, …): need ≥2 on volume **AND**
+  ≥2 on momentum. An incomplete momentum window (`~`) blocks the signal.
 - **Favourite has scored and is level/behind** (1-1, 2-2, 1-2): **EITHER**
   ≥2 of 4 on momentum, **OR** ≥2 of 4 on cumulative-from-kickoff measured
   against a `(fav_goals + 1)×` threshold. Note this is *looser* than the 0-0
@@ -48,7 +52,10 @@ Signal logic
     against `/odds/live`); it is flagged "derived odds" in the alert. If the
     Draw price is absent the condition is skipped rather than guessed.
   - If no usable live price is available the condition is **skipped**, not
-    failed, and the alert still fires.
+    failed, and the alert still fires. Live odds flicker in and out
+    (blocked/suspended); the **last live price for a fixture is carried forward
+    for up to `PRICE_CARRY_TTL` (180s)** so a momentary gap at a checkpoint does
+    not drop the price.
   - Sizing uses whichever price applies, and the blotter records the `market`
     (`win` / `1X` / `X2`) so settlement grades it correctly: a **win** bet needs
     an outright win, a **double chance** needs the favourite merely to avoid
@@ -57,6 +64,11 @@ Signal logic
 Conviction score (0–100): `50 × (0.6·mean + 0.4·min)` of the ratio-to-threshold
 vector, capped at 2×, combined 0.55 volume / 0.30 momentum / 0.15 dominance.
 50 = everything exactly at threshold. 100 = everything at double.
+
+Firing policy (conviction gate): an eligible signal fires only if conviction is
+**≥ `CONV_FIRE_MIN` (50)**, and a live signal **re-fires only when its conviction
+exceeds the highest already alerted** for that fixture — so a deteriorating
+situation is not repeated. Alerts still stop entirely once you reply "bet done".
 
 Sizing: base = `1000 / (price − 1)` (target win €1,000), multiplied by
 `1.0 + (MULT_MAX−1)·(conv−50)/(85−50)` clamped to [0.5, 2.0], then capped by

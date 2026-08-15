@@ -23,6 +23,9 @@ class Monitor:
         self.done = {}           # fid -> set(judged checkpoints)
         self.open_pos = {}       # fid -> staked amount (exposure)
         self.prematch = {}       # fid -> (side, price) | None
+        self.price_cache = {}    # fid -> (timestamp, odds dict) for carry-forward
+        self.best_conv = {}      # fid -> highest conviction already alerted
+        self._now = 0.0
 
         # cross-poll / telegram state (persisted)
         self.acked = set()       # fids with a logged bet -> suppress alerts
@@ -182,10 +185,28 @@ class Monitor:
                   "Edge is a model assumption, not a measured quantity."]
         return "\n".join(lines)
 
+    # --- firing policy ------------------------------------------------------
+    def _fire_decision(self, fid, conv):
+        """Whether an eligible signal should actually be sent. Applies the
+        conviction floor and the only-re-fire-on-a-new-high rule. Returns
+        (fire, reason_when_not_firing)."""
+        if conv < config.CONV_FIRE_MIN:
+            return False, ("no signal: conviction %.0f below %.0f floor"
+                           % (conv, config.CONV_FIRE_MIN))
+        prev = self.best_conv.get(fid)
+        if prev is not None and conv <= prev:
+            return False, ("signal held: conviction %.0f not above prior %.0f, "
+                           "not repeating" % (conv, prev))
+        return True, None
+
     # --- one poll -----------------------------------------------------------
     def poll(self):
         self.receive()
+        self._now = time.time()
         prices = apifootball.live_prices(self.api)
+        # remember each fixture's latest odds so a later blocked poll can reuse it
+        for pid, pd in prices.items():
+            self.price_cache[pid] = (self._now, pd)
         fixtures = self.api.get("/fixtures", live="all")
         watched = 0
         calls_before = self.api.calls
@@ -201,7 +222,8 @@ class Monitor:
 
         live = {str((f.get("fixture") or {}).get("id")) for f in fixtures}
         self.settle(live)
-        for d in (self.history, self.done, self.open_pos):
+        for d in (self.history, self.done, self.open_pos, self.price_cache,
+                  self.best_conv):
             for k in [k for k in d if k not in live]:
                 del d[k]
 
@@ -266,12 +288,18 @@ class Monitor:
         # (win or draw), not an outright win from behind. When level it is the
         # win market as before.
         behind = fav_goals < opp_goals
-        pinfo = apifootball.signal_price(prices.get(fid), side, behind)
+        fx_prices = prices.get(fid)
+        if not fx_prices:
+            cached = self.price_cache.get(fid)
+            if cached and (self._now - cached[0]) <= config.PRICE_CARRY_TTL:
+                fx_prices = cached[1]      # carry the last live odds over the gap
+        pinfo = apifootball.signal_price(fx_prices, side, behind)
         price = pinfo["price"]
-        print("   %-38s %2d' fav=%-14s %s vol=%d/4 mom=%d/4%s conv=%.0f "
+        nd = ev.n_present
+        print("   %-38s %2d' fav=%-14s %s vol=%d/%d mom=%d/%d%s conv=%.0f "
               "pm=%.2f odds=%s cp=%s"
               % (label, minute, fav_name, self.brief(fstat, ostat, ev.vol_th),
-                 ev.vol_met, ev.mom_met, "~" if ev.approx else " ", ev.conv,
+                 ev.vol_met, nd, ev.mom_met, nd, "~" if ev.approx else " ", ev.conv,
                  pm, ("%.2f" % price) if price else "n/a", cp), flush=True)
 
         if cp is None or minute > config.CHECKPOINTS[-1] + 5:
@@ -284,13 +312,21 @@ class Monitor:
                   flush=True)
             return
         if not (ev.ok and price_ok):
-            why = ["vol %d/4 mom %d/4 [%s]" % (ev.vol_met, ev.mom_met, ev.basis)]
+            why = ["vol %d/%d mom %d/%d [%s]"
+                   % (ev.vol_met, nd, ev.mom_met, nd, ev.basis)]
             if ev.approx:
                 why.append("window incomplete")
             if not price_ok:
                 why.append("price %.2f outside %.2f-%.2f"
                            % (price, config.PRICE_FLOOR, config.PRICE_CEIL))
             print("       cp%d no signal: %s" % (cp, "; ".join(why)), flush=True)
+            return
+
+        # conviction gate: must clear the floor to fire at all, and only re-fire
+        # when it beats the highest conviction already alerted for this fixture.
+        fire, reason = self._fire_decision(fid, ev.conv)
+        if not fire:
+            print("       cp%d %s" % (cp, reason), flush=True)
             return
 
         open_total = sum(self.open_pos.values())
@@ -302,6 +338,7 @@ class Monitor:
                    price=price, market=pinfo["market"], kind=pinfo["kind"],
                    derived=pinfo["derived"])
         self.last_alert[fid] = ctx
+        self.best_conv[fid] = ev.conv
         mid = self.tg.send(self.alert_text(ctx, ev, sz, price, pm))
         if mid:
             self.msg2fid[str(mid)] = fid

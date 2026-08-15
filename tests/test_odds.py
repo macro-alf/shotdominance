@@ -81,6 +81,20 @@ def test_behind_with_no_prices_yields_none():
     assert r["price"] is None and r["kind"] == "dc"
 
 
+def test_behind_never_uses_the_win_from_behind_price():
+    # full 1x2 present AND live DC present; a behind favourite must be priced on
+    # the double chance, never the (long) win-from-behind price.
+    fx = {"Home": 3.5, "Away": 2.1, "Draw": 3.2, "1X": 1.9, "X2": 1.6}
+    r_home = apifootball.signal_price(fx, "home", behind=True)
+    assert r_home["kind"] == "dc" and r_home["market"] == "1X"
+    assert r_home["price"] == 1.9 and r_home["price"] != fx["Home"]
+    r_away = apifootball.signal_price(fx, "away", behind=True)
+    assert r_away["kind"] == "dc" and r_away["market"] == "X2"
+    assert r_away["price"] == 1.6 and r_away["price"] != fx["Away"]
+    # sanity: when level, it DOES use the win price
+    assert apifootball.signal_price(fx, "home", behind=False)["price"] == fx["Home"]
+
+
 # --- settlement -------------------------------------------------------------
 def _bet(back, market, price=2.0, stake=100.0):
     return dict(back=back, market=market, stake=stake, price_taken=price,

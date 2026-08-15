@@ -24,7 +24,7 @@ FLOOR, CEIL = 1.75, 4.00
 ROW = re.compile(
     r"^\s+(?P<match>.+?)\s+(?P<min>\d+)'\s+fav=(?P<fav>\S.*?)\s+"
     r"(?P<stats>xg=\S+\s+shots=\S+\s+sot=\S+\s+box=\S+)\s+"
-    r"vol=(?P<vol>\d)/4\s+mom=(?P<mom>\d)/4(?P<ap>[~ ])\s*"
+    r"vol=(?P<vol>\d)/\d\s+mom=(?P<mom>\d)/\d(?P<ap>[~ ])\s*"
     r"conv=(?P<conv>\d+)\s+(?:pm=(?P<pm>[0-9.]+)\s+)?odds=(?P<odds>\S+)\s+cp=(?P<cp>\S+)\s*$")
 LEAD = re.compile(r"^\s+(?P<match>.+?)\s+(?P<min>\d+)'\s+fav=(?P<fav>\S.*?)\s+"
                   r"(?P<stats>xg=\S+.*?)\s+cp=(?P<cp>\S+)\s+\(leading\)\s*$")
@@ -259,7 +259,7 @@ def report(rows, nosig, signals, bets, polls, events, top):
         if "price" in why and "outside" in why: reasons["price outside band"] += 1
         if "window incomplete" in why: reasons["momentum window incomplete"] += 1
         if "no baseline since goal" in why: reasons["no goal baseline"] += 1
-        m = re.search(r"vol (\d)/4 mom (\d)/4", why)
+        m = re.search(r"vol (\d)/\d mom (\d)/\d", why)
         if m:
             v, mm = int(m.group(1)), int(m.group(2))
             if v < NEED and mm < NEED: reasons["volume AND momentum short"] += 1
