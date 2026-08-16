@@ -5,51 +5,20 @@ for context. Last updated 2026-08-16.
 
 ## High value
 
-- [ ] **Phase 1b — feature exploration: where does the lift live, and can the
-  51.8% be raised?** Queued 2026-08-16 after Phase 1 showed +12.5pp (z=4.17).
+- [x] **Phase 1b — DONE 2026-08-16. Verdict: keep the rule unchanged.**
+  46 candidates searched on 2020–23, confirmed once on an untouched 2014–19
+  holdout. The core signal replicated (+5.6pp stratified, z=4.07, n=1,244) but
+  **no refinement survived usefully** — the best in-sample rule (56.5% win rate)
+  came back at 50.8%, and the two that technically cleared the bar beat the
+  baseline by +0.5/+0.6pp while discarding 30–43% of signals. See `STRATEGY.md`.
+  Protocol and frozen candidates in `backtest/candidates.py`, run once via
+  `backtest/confirm.py` — do not re-run against this holdout with new rules; it
+  is spent. A future search needs fresh seasons or a different holdout.
 
-  **Read this before touching a parameter.** An earlier optimisation pass on
-  this project overfit a placebo variable (+119% in-sample → +39.5% out of
-  sample). With ~10 tunable knobs, a search WILL find a configuration that
-  looks better on 2020-23 and means nothing. The protocol is what makes the
-  answer worth having:
-
-  1. **Split before looking.** Understat reaches back to 2014. Explore on
-     2014–2019, confirm ONCE on 2020–2023. The holdout is touched a single
-     time, at the end. Anything that fails there is dead, not "re-tuned".
-  2. **Prefer shape to threshold.** Win rate by conviction decile is stronger
-     evidence than any cut point: a monotone curve means conviction carries
-     information, whereas a threshold that only works at one value is noise.
-     Same for the odds band and the minute.
-  3. **Count the comparisons.** Report how many configurations were tried and
-     what the best-of-N would look like under the null. An unreported search
-     space is how the placebo got through last time.
-  4. **Effect must survive, not just persist.** Require the holdout to retain
-     most of the exploration lift, not merely stay positive.
-
-  **Win rate is the wrong objective on its own.** Tightening filters raises
-  hit rate by discarding signals, which cuts breadth — 60% on 20 bets a season
-  is worse than 52% on 300 if the price is right. Judge candidates on lift x
-  signal count, and settle it properly against real prices in Phase 2.
-
-  Ordered by prior plausibility, fixed BEFORE running:
-  - **a.** Conviction as a continuous predictor (deciles) — is it monotone,
-    and where is the knee? `CONV_FIRE_MIN=50` was chosen a priori, never fitted.
-  - **b.** Metric decomposition — which of xg/shots/sot/box carries the lift.
-    The 2-of-4 rule weights them equally; `sot`/`box` may do the work.
-  - **c.** Volume vs momentum branch — which side of the signal predicts.
-  - **d.** Minute profile — does the lift decay from 45' to 75'? This is the
-    real test of the time-remaining factor, which is currently an assumption.
-  - **e.** Odds band — does the lift concentrate inside part of 1.30–2.25?
-  - **f.** `NEED` 2→3, and `DOM_RATIO` (expected low value: it is ~4% of
-    rejections, so the absolute bars bind instead).
-  - **g.** BEHIND / double-chance, currently unproven at n=61 — does it hold
-    up with four seasons, or should the strategy drop it and bet level only?
-
-- [ ] **Backtest — Phase 2 (edge / ROI).** Add **Betfair historical exchange**
-  in-play prices (tick-level, downloadable) to Phase 1, matched by teams+date, to
-  compute real P&L at prices you'd actually have gotten. API-Football has no
-  historical in-play odds, so Betfair is the source.
+  Still open from this work: **C4**, a broad dominance-only rule (no absolute
+  bars) giving 3.3x the breadth at +3.8pp instead of +5.6pp. Breadth-adjusted it
+  beats the current rule (244 vs 198). Which is better depends on the price
+  each gets, so settle it in Phase 2, not by win rate.
 
 - [ ] **Re-look at Kelly and bet sizing.** Queued 2026-08-16. The sizing stack
   is the least evidenced part of the system and currently sizes real money off

@@ -121,6 +121,38 @@ in-play; Phase 1 deliberately ignores price. Whether 51.1% beats the price you
 would actually get is Phase 2 (Betfair), and nothing before it should drive
 sizing.
 
+## What Phase 1b established (2026-08-16): keep the rule as it is
+A 46-candidate search on 2020–2023, confirmed once on an untouched 2014–2019
+holdout (24,966 checkpoints, 4,458 fixtures). Lift is **stratified** — win rate
+minus the base rate of the same (price bucket, minute, state) cells — because
+raw win rate rewards picking short prices and early minutes, which win more
+often precisely because they pay less. A "price < 1.55" filter scores +0.9pp on
+this measure while looking like a large win-rate gain.
+
+| rule | in-sample lift | holdout lift | holdout n |
+|---|---|---|---|
+| **baseline (current rule)** | +6.6pp | **+5.6pp (z=4.07)** | 1,244 |
+| C1 + box dominance ≤ 0.35 | +9.2pp | +6.1pp | 713 |
+| C2 + xg volume ratio ≥ 1.2 | +8.4pp | +6.2pp | 849 |
+| C3 both (56.5% in sample!) | +11.3pp | +5.5pp | 459 |
+| C4 broad dominance-only | +5.7pp | +3.8pp | 4,114 |
+
+**The core signal replicated** on data never looked at: +5.6pp, z=4.07. **No
+refinement survived usefully.** C1/C2 beat the baseline by only +0.5/+0.6pp
+while discarding 30–43% of signals, and their increment test collapsed — the
+rows they throw away carry +4.9pp and +4.2pp on holdout (they carried +2.7 and
++1.6 in sample), so they are no longer discriminating. On breadth-adjusted
+terms (lift×√n) the baseline beats both: 198 vs 163 and 182. C3, the best
+in-sample rule at a 56.5% win rate, came back at 50.8%.
+
+**Season dispersion is large.** Baseline lift by holdout season: +14.7, +4.2,
+−0.2, +1.6, +4.4, +8.3pp. Across all ten seasons it is positive in 9 of 10 but
+ranges from −0.2 to +14.7. A single season proves nothing either way.
+
+Only C4 remains interesting: 3.3× the breadth at a lower per-bet lift
+(+3.8pp, z=5.07, breadth-adjusted 244 vs 198). Whether that beats the current
+rule depends entirely on price — a Phase 2 question.
+
 ## What is NOT established (from HANDOVER.md — read it)
 - **No measured edge vs price.** Phase 1 shows the signal predicts the
   *outcome*; it says nothing about whether the *price* compensates.
