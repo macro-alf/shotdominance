@@ -50,6 +50,15 @@ CONV_CAP = _f("CONV_CAP", 2.0)
 # fixture (no nagging on a deteriorating situation).
 CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 50.0)
 
+# time-remaining factor (PROTOTYPE, off by default). A dominant favourite that
+# still needs a goal is a better bet earlier in the match - more time to convert
+# the dominance. This multiplies conviction by (1 +/- TIME_WEIGHT) around a
+# neutral pivot minute: earlier -> boosted, later -> reduced, x1 at the pivot.
+# TIME_WEIGHT=0 disables it entirely. Set e.g. TIME_WEIGHT=0.5 to enable.
+TIME_WEIGHT = _f("TIME_WEIGHT", 0.0)
+MATCH_END = _f("MATCH_END", 90.0)            # nominal full-time minute
+TIME_PIVOT_MIN = _f("TIME_PIVOT_MIN", 60.0)  # minute where the factor is neutral
+
 # --- live price band (favourite to win) -------------------------------------
 PRICE_FLOOR = _f("PRICE_FLOOR", 1.75)
 PRICE_CEIL = _f("PRICE_CEIL", 4.00)

@@ -43,6 +43,8 @@ class Evaluation:
     s_vol: float
     s_mom: float
     s_dom: float
+    s_time: float           # time-remaining as a 0-100 (100 = whole match left)
+    time_mult: float        # the multiplier applied to conviction (1.0 when off)
     vol_th: Dict[str, float]
     mom_th: Dict[str, float]
 
@@ -122,6 +124,31 @@ def dom_score(doms):
     return max(0.0, min(100.0, 100.0 * (1.0 - mean / config.DOM_RATIO)))
 
 
+def time_remaining_frac(minute):
+    """Fraction of the (nominal) match still to play, 1.0 at the first checkpoint
+    down to 0.0 at MATCH_END."""
+    span = max(config.MATCH_END - config.CHECKPOINTS[0], 1.0)
+    return max(0.0, min(1.0, (config.MATCH_END - minute) / span))
+
+
+def time_factor(minute):
+    """Conviction multiplier from time remaining: >1 earlier in the match, <1
+    later, exactly 1.0 at TIME_PIVOT_MIN. TIME_WEIGHT=0 disables it (1.0).
+
+    Rationale: with more of the match left there is more opportunity to turn shot
+    dominance into the goal the bet needs, so the same dominance is worth more
+    earlier. This is orthogonal to the minute-scaled volume threshold, which
+    already normalises for the *rate* of dominance."""
+    w = config.TIME_WEIGHT
+    if w <= 0:
+        return 1.0
+    frac = time_remaining_frac(minute)
+    pivot = max(0.0, min(1.0, (config.MATCH_END - config.TIME_PIVOT_MIN)
+                         / max(config.MATCH_END - config.CHECKPOINTS[0], 1.0)))
+    mult = 1.0 + w * (frac - pivot)
+    return max(1.0 - w, min(1.0 + w, mult))
+
+
 def evaluate(history, fid, minute, fav, opp, fav_goals):
     """The full decision for one checkpoint."""
     vol_th, mom_th = thresholds(minute)
@@ -145,7 +172,10 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
                  % (fav_goals, "yes" if a else "no", mult, "yes" if b else "no"))
         extra = ["%dx bar: %s" % (mult, "  ".join(hard_det))]
 
-    conv = (0.55 * score(vol_r) + 0.30 * score(mom_r) + 0.15 * dom_score(vol_d))
+    base_conv = (0.55 * score(vol_r) + 0.30 * score(mom_r)
+                 + 0.15 * dom_score(vol_d))
+    tmult = time_factor(minute)
+    conv = max(0.0, min(100.0, base_conv * tmult))
     # how many of the four metrics actually have data - when xG is missing this
     # is 3, so the requirement is "NEED of 3" rather than "NEED of 4".
     n_present = sum(1 for k in config.KEYS if fav.get(k) is not None)
@@ -154,7 +184,9 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
         vol_met=vol_met, mom_met=mom_met, n_present=n_present,
         vol_det=vol_det, mom_det=mom_det,
         extra=extra, s_vol=round(score(vol_r), 1), s_mom=round(score(mom_r), 1),
-        s_dom=round(dom_score(vol_d), 1), vol_th=vol_th, mom_th=mom_th)
+        s_dom=round(dom_score(vol_d), 1),
+        s_time=round(100.0 * time_remaining_frac(minute), 1),
+        time_mult=round(tmult, 3), vol_th=vol_th, mom_th=mom_th)
 
 
 def due_checkpoint(done, minute):

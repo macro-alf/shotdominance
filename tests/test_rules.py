@@ -127,6 +127,41 @@ def test_evaluate_reports_present_metric_count():
     assert ev2.n_present == 4
 
 
+def test_time_factor_off_by_default():
+    # default TIME_WEIGHT is 0 -> no effect anywhere
+    assert config.TIME_WEIGHT == 0.0
+    assert rules.time_factor(45) == 1.0 and rules.time_factor(75) == 1.0
+
+
+def test_time_factor_neutral_at_pivot_and_monotone():
+    old = config.TIME_WEIGHT
+    try:
+        config.TIME_WEIGHT = 0.5
+        assert abs(rules.time_factor(config.TIME_PIVOT_MIN) - 1.0) < 1e-9
+        # more time left -> higher multiplier
+        assert rules.time_factor(45) > rules.time_factor(60) > rules.time_factor(75)
+        assert rules.time_factor(45) > 1.0 and rules.time_factor(75) < 1.0
+        # bounded by +/- weight
+        assert rules.time_factor(45) <= 1.0 + config.TIME_WEIGHT + 1e-9
+        assert rules.time_factor(90) >= 1.0 - config.TIME_WEIGHT - 1e-9
+    finally:
+        config.TIME_WEIGHT = old
+
+
+def test_conviction_scales_by_time_factor_when_enabled():
+    fav = {"xg": 1.6, "shots": 18, "sot": 6, "box": 9}
+    opp = {"xg": 0.2, "shots": 2, "sot": 0, "box": 1}
+    old = config.TIME_WEIGHT
+    try:
+        config.TIME_WEIGHT = 0.5
+        ev = rules.evaluate({}, "t", 50, fav, opp, fav_goals=0)
+        base = 0.55 * ev.s_vol + 0.30 * ev.s_mom + 0.15 * ev.s_dom
+        assert ev.time_mult > 1.0                       # 50' is before the pivot
+        assert abs(ev.conv - min(100.0, base * ev.time_mult)) < 0.2
+    finally:
+        config.TIME_WEIGHT = old
+
+
 def test_due_checkpoint_only_latest_fires():
     done = set()
     # at 63' the reached checkpoints are 45/50/55/60; only 60 is returned and

@@ -173,9 +173,11 @@ class Monitor:
                       % (sz["stake"], sz["mult"], sz["bound"]),
                       "  target-win base %.0f, half-Kelly cap %.0f"
                       % (sz["base"], sz["kelly"])]
+        time_note = ("  (time left %.0f%%, x%.2f)" % (ev.s_time, ev.time_mult)
+                     if ev.time_mult != 1.0 else "")
         lines += ["", "Basis: %s" % ev.basis,
-                  "Scores: volume %.0f | momentum %.0f | dominance %.0f"
-                  % (ev.s_vol, ev.s_mom, ev.s_dom),
+                  "Scores: volume %.0f | momentum %.0f | dominance %.0f%s"
+                  % (ev.s_vol, ev.s_mom, ev.s_dom, time_note),
                   "", "Cumulative (value/bar, opp as % of ours)",
                   "  " + "\n  ".join(ev.vol_det),
                   "", "Last %d min" % config.WINDOW,
