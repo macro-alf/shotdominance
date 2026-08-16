@@ -82,6 +82,12 @@ REQ_PER_MIN = _f("REQ_PER_MIN", 100)
 # not drop the price at the decisive checkpoint.
 PRICE_CARRY_TTL = _f("PRICE_CARRY_TTL", 180.0)
 
+# a rate-limited/empty statistics response reads as "0 shots / no opponent",
+# which understates dominance. Reuse the last non-empty stats for a fixture for
+# up to this many seconds (they only ever accumulate, so a slightly old count is
+# a safe floor - far better than a spurious zero).
+STATS_CARRY_TTL = _f("STATS_CARRY_TTL", 300.0)
+
 # --- files ------------------------------------------------------------------
 BLOTTER_PATH = os.getenv("BLOTTER", "blotter.csv")
 STATE_PATH = os.getenv("STATE3", "state3.json")

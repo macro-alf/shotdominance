@@ -4,7 +4,7 @@ carry-forward.
 import contextlib
 import io
 
-from shotdominance import engine
+from shotdominance import config, engine
 
 
 class StubTg:
@@ -20,6 +20,37 @@ class StubTg:
 
 
 # --- firing policy ----------------------------------------------------------
+def test_stats_carry_forward():
+    mon = engine.Monitor(None, None, set())
+    full = {"xg": 1.0, "shots": 10, "sot": 3, "box": 5}
+    empty = {"xg": None, "shots": None, "sot": None, "box": None}
+
+    mon._now = 1000.0
+    f, o, carried = mon._carry_stats("1", dict(full), dict(full))
+    assert not carried and f["shots"] == 10          # fresh full -> cached
+
+    mon._now = 1100.0                                  # within TTL
+    f, o, carried = mon._carry_stats("1", dict(empty), dict(empty))
+    assert carried and f["shots"] == 10 and o["shots"] == 10  # gap -> carried
+
+    mon._now = 1000.0 + config.STATS_CARRY_TTL + 100   # beyond TTL of last full
+    f, o, carried = mon._carry_stats("1", dict(empty), dict(empty))
+    assert not carried and f["shots"] is None          # too stale -> not carried
+
+
+def test_stats_carry_forward_is_independent_per_side():
+    mon = engine.Monitor(None, None, set())
+    full = {"xg": 1.0, "shots": 10, "sot": 3, "box": 5}
+    empty = {"xg": None, "shots": None, "sot": None, "box": None}
+    mon._now = 1.0
+    mon._carry_stats("1", dict(full), dict(full))
+    mon._now = 2.0
+    # favourite present, opponent missing -> only the opponent is carried
+    f, o, carried = mon._carry_stats("1", {"xg": None, "shots": 12, "sot": 4,
+                                           "box": 6}, dict(empty))
+    assert f["shots"] == 12 and o["shots"] == 10 and carried
+
+
 def test_fire_decision_conviction_floor():
     mon = engine.Monitor(None, None, set())
     assert mon._fire_decision("1", 49)[0] is False    # below 50 floor

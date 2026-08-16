@@ -123,3 +123,26 @@ def test_away_double_chance_settles():
     b = _bet("PEC", "X2")                 # PEC are away, backed win-or-draw
     blotter.settle_bet(b, "Ajax", 2, 2)   # home_name=Ajax, 2-2 draw
     assert b["status"] == "won"
+
+
+def test_settle_grades_by_side_and_records_final_score():
+    # win bet on the home favourite, lost 1-2 (the real Norwich case)
+    b = dict(back="Norwich", side="home", market="win", stake=100.0,
+             price_taken=2.6, status="open", pnl="")
+    blotter.settle_bet(b, "Norwich", 1, 2)
+    assert b["status"] == "lost" and b["final_score"] == "1-2"
+
+
+def test_settle_side_beats_a_mismatched_name():
+    # stored side is authoritative even if the name doesn't match exactly
+    b = dict(back="Norwich City FC", side="home", market="win", stake=100.0,
+             price_taken=2.6, status="open", pnl="")
+    blotter.settle_bet(b, "Norwich", 2, 1)          # home won 2-1
+    assert b["status"] == "won" and b["final_score"] == "2-1"
+
+
+def test_settle_legacy_row_without_side_falls_back_to_name():
+    b = dict(back="PEC", market="X2", stake=100.0, price_taken=2.0,
+             status="open", pnl="")
+    blotter.settle_bet(b, "Ajax", 2, 2)             # away DC, draw -> won
+    assert b["status"] == "won" and b["final_score"] == "2-2"

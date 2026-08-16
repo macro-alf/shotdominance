@@ -24,6 +24,7 @@ class Monitor:
         self.open_pos = {}       # fid -> staked amount (exposure)
         self.prematch = {}       # fid -> (side, price) | None
         self.price_cache = {}    # fid -> (timestamp, odds dict) for carry-forward
+        self.stats_cache = {}    # fid -> {'f':(ts,stat), 'o':(ts,stat)} carry-forward
         self.best_conv = {}      # fid -> highest conviction already alerted
         self._now = 0.0
 
@@ -185,6 +186,34 @@ class Monitor:
                   "Edge is a model assumption, not a measured quantity."]
         return "\n".join(lines)
 
+    # --- stats carry-forward ------------------------------------------------
+    @staticmethod
+    def _empty(stat):
+        return all(stat.get(k) is None for k in config.KEYS)
+
+    def _carry_stats(self, fid, fstat, ostat):
+        """Substitute the last non-empty stats for a fixture when a poll returns
+        an empty set (rate-limited / feed gap), so it is not read as 0 shots.
+        Favourite and opponent are carried independently. Returns (f, o, carried).
+        """
+        lg = self.stats_cache.get(fid, {})
+        carried = False
+
+        def resolve(cur, key):
+            nonlocal carried
+            if not self._empty(cur):
+                lg[key] = (self._now, dict(cur))     # remember the fresh reading
+                return cur
+            prev = lg.get(key)
+            if prev and (self._now - prev[0]) <= config.STATS_CARRY_TTL:
+                carried = True
+                return dict(prev[1])
+            return cur
+
+        f, o = resolve(fstat, "f"), resolve(ostat, "o")
+        self.stats_cache[fid] = lg
+        return f, o, carried
+
     # --- firing policy ------------------------------------------------------
     def _fire_decision(self, fid, conv):
         """Whether an eligible signal should actually be sent. Applies the
@@ -223,7 +252,7 @@ class Monitor:
         live = {str((f.get("fixture") or {}).get("id")) for f in fixtures}
         self.settle(live)
         for d in (self.history, self.done, self.open_pos, self.price_cache,
-                  self.best_conv):
+                  self.stats_cache, self.best_conv):
             for k in [k for k in d if k not in live]:
                 del d[k]
 
@@ -263,6 +292,9 @@ class Monitor:
         fstat, seen_f = apifootball.parse_stats(rows, fav_id)
         ostat, seen_o = apifootball.parse_stats(rows, opp_id)
         self.xg_seen = self.xg_seen or seen_f or seen_o
+        # reuse the last non-empty stats over a feed gap (before recording history
+        # so momentum deltas are not corrupted by a spurious drop to zero)
+        fstat, ostat, _carried = self._carry_stats(fid, fstat, ostat)
         fav_goals, opp_goals = (hs, as_) if side == "home" else (as_, hs)
 
         h = self.history.setdefault(fid, [])
@@ -334,9 +366,9 @@ class Monitor:
               else dict(stake=0.0, base=0.0, mult=1.0, want=0.0, kelly=0.0,
                         bound="no price"))
         ctx = dict(label=label, league=lg.get("name"), minute=minute,
-                   fav=fav_name, score="%d-%d" % (hs, as_), conv=ev.conv,
-                   price=price, market=pinfo["market"], kind=pinfo["kind"],
-                   derived=pinfo["derived"])
+                   fav=fav_name, side=side, score="%d-%d" % (hs, as_),
+                   conv=ev.conv, price=price, market=pinfo["market"],
+                   kind=pinfo["kind"], derived=pinfo["derived"])
         self.last_alert[fid] = ctx
         self.best_conv[fid] = ev.conv
         mid = self.tg.send(self.alert_text(ctx, ev, sz, price, pm))
