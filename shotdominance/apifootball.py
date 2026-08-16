@@ -64,6 +64,11 @@ class ApiClient:
         self.calls = 0
         self.throttled = 0.0     # seconds spent waiting on the pacer
         self.retries = 0         # rate-limit backoff events
+        # Non-rate-limit error body from the most recent call, else None. These
+        # arrive inside a 200 response with an empty `response` list, so an
+        # account problem is indistinguishable from "no live fixtures" unless
+        # somebody looks at this. The engine watches it and alerts.
+        self.last_error = None
 
     def get(self, path, **params):
         for attempt in range(self.max_retry):
@@ -91,6 +96,7 @@ class ApiClient:
                 continue
             if errs:
                 print("  ! API errors:", errs, flush=True)
+            self.last_error = errs or None
             return body.get("response", [])
         print("  ! gave up on %s after %d rate-limited attempts"
               % (path, self.max_retry), flush=True)

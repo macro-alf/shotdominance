@@ -191,3 +191,64 @@ def test_nothing_is_recorded_before_the_lead_in():
     with contextlib.redirect_stdout(io.StringIO()):
         mon.poll()
     assert "7" not in mon.history          # too early to spend calls on
+
+
+# --- feed health ------------------------------------------------------------
+class DeadFeedApi(CarryStubApi):
+    """API-Football refusing an account: HTTP 200, empty response, error in the
+    body. Indistinguishable from a quiet evening unless last_error is watched."""
+    def __init__(self):
+        super().__init__()
+        self.last_error = {"requests": "You have reached the request limit"}
+
+    def get(self, path, **p):
+        self.calls += 1
+        self.reqs += 1
+        return []
+
+
+def test_dead_feed_alerts_once_then_stays_quiet():
+    tg = StubTg()
+    mon = engine.Monitor(DeadFeedApi(), tg, {1})
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(config.FEED_BAD_POLLS):
+            mon.poll()
+    assert len(tg.sent) == 1 and "BLIND" in tg.sent[0]
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(5):
+            mon.poll()
+    assert len(tg.sent) == 1          # cooldown: no nagging every minute
+
+
+def test_no_alert_before_the_threshold():
+    tg = StubTg()
+    mon = engine.Monitor(DeadFeedApi(), tg, {1})
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(config.FEED_BAD_POLLS - 1):
+            mon.poll()
+    assert tg.sent == []              # a single blip is not an outage
+
+
+def test_recovery_is_announced():
+    tg = StubTg()
+    api = DeadFeedApi()
+    mon = engine.Monitor(api, tg, {1})
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(config.FEED_BAD_POLLS):
+            mon.poll()
+        api.last_error = None
+        mon.poll()
+    assert len(tg.sent) == 2 and "recovered" in tg.sent[1]
+
+
+def test_a_quiet_evening_is_not_reported_as_an_outage():
+    """0 live fixtures with no API error must stay silent."""
+    tg = StubTg()
+    api = DeadFeedApi()
+    api.last_error = None
+    mon = engine.Monitor(api, tg, {1})
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(10):
+            mon.poll()
+    assert tg.sent == []

@@ -108,6 +108,16 @@ PRICE_CARRY_TTL = _f("PRICE_CARRY_TTL", 180.0)
 STATS_CARRY_TTL = _f("STATS_CARRY_TTL", 300.0)
 
 # --- files ------------------------------------------------------------------
+# --- feed health ------------------------------------------------------------
+# API-Football reports account/entitlement failures INSIDE a 200 body with an
+# empty response list, so a lapsed subscription is indistinguishable from a
+# quiet evening. On 2026-08-16 the monitor polled blind for ~85 minutes before
+# anyone noticed. Alert on Telegram after this many consecutive bad polls, and
+# no more often than the cooldown.
+FEED_BAD_POLLS = _i("FEED_BAD_POLLS", 3)
+FEED_ALERT_COOLDOWN = _f("FEED_ALERT_COOLDOWN", 3600.0)
+
+# --- files ------------------------------------------------------------------
 BLOTTER_PATH = os.getenv("BLOTTER", "blotter.csv")
 STATE_PATH = os.getenv("STATE3", "state3.json")
 

@@ -20,3 +20,4 @@ venv/
 # backtest artefacts
 backtest_cache/
 backtest_rows*.csv
+backtest_features*.csv

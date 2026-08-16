@@ -36,6 +36,8 @@ class Monitor:
         self.last_alert = {}     # fid -> context dict for record_bet
         self.offset = 0          # telegram getUpdates cursor
         self.xg_seen = False
+        self.feed_bad = 0        # consecutive polls the API refused
+        self.feed_alerted = 0.0  # when we last said so on Telegram
 
     # --- persistence --------------------------------------------------------
     def save(self):
@@ -258,12 +260,41 @@ class Monitor:
             for k in [k for k in d if k not in live]:
                 del d[k]
 
+        self._feed_health()
+
         print("   pacing: %d calls in %.0fs, %.0fs waiting, %d retries"
               % (self.api.calls - calls_before, time.time() - t0,
                  self.api.throttled, self.api.retries), flush=True)
         print("poll: %d live, %d watched, %d requests total%s"
               % (len(fixtures), watched, self.api.reqs,
                  "" if self.xg_seen else "   [xG NOT SEEN YET]"), flush=True)
+
+    def _feed_health(self):
+        """Say out loud when the feed dies, and when it comes back.
+
+        An entitlement failure (expired subscription, plan cap) arrives as a
+        200 with an empty response list, so the monitor cheerfully reports
+        "0 live, 0 watched" and keeps polling. Without this it is silent: on
+        2026-08-16 the account started refusing every request at ~17:15 and the
+        monitor showed nothing wrong for 85 minutes. A dead feed means no alert
+        can ever fire, so it has to be louder than a quiet evening.
+        """
+        err = getattr(self.api, "last_error", None)
+        if not err:
+            if self.feed_bad >= config.FEED_BAD_POLLS:
+                self.tg.send("Feed recovered - API-Football is answering again.")
+            self.feed_bad = 0
+            return
+
+        self.feed_bad += 1
+        if self.feed_bad < config.FEED_BAD_POLLS:
+            return
+        if self._now - self.feed_alerted < config.FEED_ALERT_COOLDOWN:
+            return
+        self.feed_alerted = self._now
+        self.tg.send("MONITOR IS BLIND - API-Football is refusing requests "
+                     "(%d polls).\n%s\nNo alerts can fire until this clears; "
+                     "check the API-Football dashboard." % (self.feed_bad, err))
 
     def _poll_fixture(self, fx, prices):
         self._last_watched = False
