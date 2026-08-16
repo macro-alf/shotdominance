@@ -50,7 +50,11 @@ DAILY_BUDGET = int(os.getenv("DAILY_BUDGET", "7500"))
 QUOTA_RESERVE = int(os.getenv("QUOTA_RESERVE", "600"))
 BAND_SHARE = float(os.getenv("BAND_SHARE", "0.45"))
 POLL_MIN, POLL_MAX = 60, 300
-WATCH_FROM, WATCH_TO = 30, 100   # minutes after kickoff a fixture costs a stats call
+# Minutes after kickoff over which a fixture costs a statistics call. The lower
+# bound IS the engine's recording gate - derive it so the two cannot drift (it
+# was a stale literal 30 while the engine had always recorded from 15).
+WATCH_FROM = config.CHECKPOINTS[0] - config.WINDOW - config.RECORD_LEAD
+WATCH_TO = 100
 TZNAME = os.getenv("TZNAME", "Europe/Rome")
 MONITOR = os.getenv("MONITOR_SCRIPT", "monitor.py")
 DONE_STATUS = {"FT", "AET", "PEN", "PST", "CANC", "ABD", "AWD", "WO"}

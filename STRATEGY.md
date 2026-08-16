@@ -26,6 +26,10 @@ real result.
 - **Metrics (4):** xg, shots, sot, box. Baseline at 45': xG 0.70 / shots 10 /
   sot 3 / box 5. Volume threshold scales ×(minute/45); momentum is a constant
   30-min-window bar at ×(30/45).
+- **Recording** starts at minute **10** (`CHECKPOINTS[0] − WINDOW − RECORD_LEAD`).
+  The 5-min lead-in exists because polls skip minutes, so recording from exactly
+  15 landed the first snapshot at 16' — leaving the 45' window with no base,
+  flagging it approx and blocking the momentum branch at every 45' checkpoint.
 - **Realised** = value ≥ threshold **AND** opponent ≤ 50% of ours (dominance).
   When xG is missing the requirement is **2 of the 3** available metrics.
 - **Signal:** favourite not scored → ≥2 volume **AND** ≥2 momentum (an
@@ -80,6 +84,10 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
 
 ## Current state (2026-08-16)
 - Live on the current code, watchlist, and time factor.
+- **"1a" early-snapshot fix applied** (`RECORD_LEAD=5`). Note `daily.py` launches
+  `monitor.py` once per day, 15 min before the first kickoff — it does **not**
+  restart between matches, so a config/code change only lands on the next launch
+  (or an explicit same-day redeploy).
 - First real settled bet: Norwich to win @ 2.60, €781, **LOST** (n=1, noise).
 - ~5–6 days of forward logs accumulating in `logs/`.
 

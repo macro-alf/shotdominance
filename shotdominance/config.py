@@ -32,6 +32,15 @@ MAX_ODDS = _f("MAX_ODDS", 2.25)          # pre-match favourite band, upper
 CHECKPOINTS = [45, 50, 55, 60, 65, 70, 75]
 WINDOW = _i("WINDOW", 30)                # trailing momentum window, minutes
 NEED = 2                                 # how many of the four metrics must hold
+
+# The momentum window at the first checkpoint (45') needs a snapshot at or before
+# minute 15. Recording from exactly minute 15 means the first snapshot usually
+# lands at 16 (poll granularity plus the moment the fixture goes live), so the
+# window base is missing and the 45' checkpoint is permanently flagged approx -
+# which blocks the momentum branch outright. Start recording this many minutes
+# early so a valid base always exists. Costs a few statistics calls per watched
+# fixture; the quota has ample room.
+RECORD_LEAD = _i("RECORD_LEAD", 5)
 KEYS = ("xg", "shots", "sot", "box")
 
 # baseline thresholds AT minute 45; volume scales * t/45, momentum * WINDOW/45

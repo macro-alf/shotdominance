@@ -5,15 +5,6 @@ for context. Last updated 2026-08-16.
 
 ## High value
 
-- [ ] **"1a" — capture snapshots earlier to kill the spurious `~` (approx) flag.**
-  The 30-min momentum window at the 45' checkpoint needs a baseline ≤ minute 15,
-  but the monitor only starts recording at minute 15, so the first snapshot often
-  lands at 16 and the *whole match* is flagged approx → the momentum branch is
-  permanently blocked. On 2026-08-14 this cost the best signal of the day (Cercle
-  Brugge, 4/4 vol + 4/4 mom, conviction up to 68). Fix: start recording ~5 min
-  earlier (e.g. `minute ≥ CHECKPOINTS[0] − WINDOW − 5`); quota has plenty of room.
-  **This is the single highest-value change and was recommended but not applied.**
-
 - [ ] **Backtest — Phase 1 (signal validation, no odds).** Reconstruct the 45'–75'
   triggers from **Understat** shot-event data (free; EPL/La Liga/Bundesliga/
   Serie A/Ligue 1 — reconstruct cumulative shots/xG/sot/box per minute) and settle
@@ -63,4 +54,6 @@ Clean package rebuild · double-chance-when-behind (+ derived fallback) · convi
 gate (≥50) + rising-only repeats · xG-missing → 2/3 · price & stats carry-forward ·
 settle by side + `final_score` · UTF-8 stdout fix (was crashing endday's report) ·
 watchlist tightened to Tier 1+2 (dropped Ligue 2 & Spain Segunda, added Ireland &
-Allsvenskan) · time-remaining conviction factor (boost-only).
+Allsvenskan) · time-remaining conviction factor (boost-only) · **"1a" early
+snapshots (`RECORD_LEAD=5`) — unblocks the momentum branch at the 45' checkpoint**
+· `daily.pace()` `WATCH_FROM` derived from the engine gate instead of a stale 30.

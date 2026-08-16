@@ -155,3 +155,39 @@ def test_carry_forward_expires_after_ttl():
     with contextlib.redirect_stdout(buf):
         mon.poll()
     assert "odds=n/a" in _row_for(buf.getvalue(), 75)
+
+
+# --- early recording (the momentum window at the first checkpoint) ----------
+def test_recording_starts_early_enough_for_a_complete_45_window():
+    """Regression: recording used to start at exactly CHECKPOINTS[0]-WINDOW, so
+    the first snapshot landed at 16' and the 45' checkpoint was always approx,
+    which permanently blocked the momentum branch. RECORD_LEAD must buy a base
+    snapshot at or before minute 15.
+
+    Polls are stepped 2 minutes apart so minute 15 itself is never sampled: a
+    poll cycle takes longer than POLL_SECONDS once pacing and retries are in
+    play, so the live loop skips minutes (the 2026-08-14 log jumps 22'->24' and
+    29'->31'). That is exactly why the first snapshot landed at 16'."""
+    api = CarryStubApi()
+    mon = engine.Monitor(api, StubTg(), {1})
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        for m in range(2, config.CHECKPOINTS[0] + 1, 2):   # 2', 4', ... 44'
+            api.minute = m
+            mon.poll()
+        api.minute = config.CHECKPOINTS[0]                 # the 45' checkpoint
+        mon.poll()
+
+    base_needed = config.CHECKPOINTS[0] - config.WINDOW
+    assert mon.history["7"][0].minute <= base_needed, (
+        "no snapshot at or before %d' - the 45' window has no base" % base_needed)
+    assert "~" not in _row_for(buf.getvalue(), config.CHECKPOINTS[0])
+
+
+def test_nothing_is_recorded_before_the_lead_in():
+    api = CarryStubApi()
+    mon = engine.Monitor(api, StubTg(), {1})
+    api.minute = config.CHECKPOINTS[0] - config.WINDOW - config.RECORD_LEAD - 1
+    with contextlib.redirect_stdout(io.StringIO()):
+        mon.poll()
+    assert "7" not in mon.history          # too early to spend calls on

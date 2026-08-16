@@ -273,7 +273,7 @@ class Monitor:
         f = fx.get("fixture") or {}
         fid = str(f.get("id"))
         minute = (f.get("status") or {}).get("elapsed") or 0
-        if minute < config.CHECKPOINTS[0] - config.WINDOW:
+        if minute < config.CHECKPOINTS[0] - config.WINDOW - config.RECORD_LEAD:
             return
 
         teams, goals = fx.get("teams") or {}, fx.get("goals") or {}
