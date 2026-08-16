@@ -61,6 +61,10 @@ def report(rows, title):
     fired = [r for r in rows if r["fired"]]
     quiet = [r for r in rows if not r["fired"]]
     print(line("all eligible (base rate)", rows))
+    # the metric rule on its own, before the conviction floor and the
+    # rising-only repeat policy - separates "does dominance predict" from
+    # "does the conviction gate add anything".
+    print(line("rule passed (pre-conviction)", [r for r in rows if r["rule_ok"]]))
     print(line("signalled", fired))
     print(line("did not signal", quiet))
     z = two_proportion_z(sum(1 for r in fired if r["won"]), len(fired),
