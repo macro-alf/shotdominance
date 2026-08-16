@@ -13,7 +13,11 @@ placed.
 ## The rule set (current, as of 2026-08-13)
 
 Eligibility
-- Competition in the 24-league list (`config.LEAGUES`)
+- Competition in the 24-competition list (`config.LEAGUES`), chosen for stats
+  completeness (2026-08-16, `logs/league_coverage.csv`): Tier 1 = 100% xG + core
+  shot stats (16 leagues + UEFA CL/EL/ECL); Tier 2 = 100% core, intermittent xG
+  (Bundesliga, Ligue 1, Jupiler, Allsvenskan, Czech). xG-less leagues (Ligue 2,
+  Spain Segunda) were dropped. All ids pinned in `config.PINNED_IDS`.
 - Pre-match favourite decimal odds **1.30–2.25**
 - Favourite **not currently winning**
 - Checkpoints at minutes **45, 50, 55, 60, 65, 70, 75** — each evaluated once

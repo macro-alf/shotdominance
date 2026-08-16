@@ -107,37 +107,67 @@ NOT_FT = ("extratime", "halftime", "firsthalf", "secondhalf", "1sthalf",
 DOUBLE_CHANCE = {"doublechance", "doublechance1x2"}
 
 # --- competitions -----------------------------------------------------------
-# 24 competitions, resolved to feed league ids at startup by name. PINNED_IDS
-# guarantees the two accented ones survive even if name matching fails.
+# 24 competitions, chosen for statistics completeness (sampled 2026-08-16, see
+# logs/league_coverage.csv). Tier 1 = 100% xG + core shot stats for both teams;
+# Tier 2 = 100% core with high-but-intermittent xG (the 2-of-3 rule covers the
+# xG gaps). Ligue 2 and Spain Segunda were dropped (no xG at all). Resolved to
+# feed ids at startup by name, with PINNED_IDS as a guaranteed fallback.
 LEAGUES = [
-    ("Austria", "Bundesliga"),
-    ("Belgium", "Jupiler Pro League"),
-    ("Denmark", "Superliga"),
-    ("France", "Ligue 1"),
-    ("France", "Ligue 2"),
-    ("Germany", "Bundesliga"),
-    ("Germany", "2. Bundesliga"),
-    ("Greece", "Super League 1"),
-    ("England", "Premier League"),
-    ("England", "Championship"),
+    # Tier 1 - gold-standard leagues
+    ("Spain", "La Liga"),
     ("Italy", "Serie A"),
     ("Italy", "Serie B"),
+    ("England", "Premier League"),
+    ("England", "Championship"),
+    ("Germany", "2. Bundesliga"),
+    ("Netherlands", "Eredivisie"),
+    ("Portugal", "Primeira Liga"),
+    ("Turkey", "Süper Lig"),
+    ("Greece", "Super League 1"),
+    ("Denmark", "Superliga"),
+    ("Norway", "Eliteserien"),
+    ("Switzerland", "Super League"),
+    ("Scotland", "Premiership"),
+    ("Austria", "Bundesliga"),
+    ("Ireland", "Premier Division"),
+    # Tier 1 - UEFA club competitions (gold-standard once past the Aug qualifiers,
+    # which get filtered out by the odds/favourite band anyway)
     ("World", "UEFA Champions League"),
     ("World", "UEFA Europa League"),
     ("World", "UEFA Europa Conference League"),
-    ("Norway", "Eliteserien"),
-    ("Netherlands", "Eredivisie"),
-    ("Portugal", "Primeira Liga"),
+    # Tier 2 - near-gold (100% core shots, high-but-intermittent xG)
+    ("Belgium", "Jupiler Pro League"),
+    ("Sweden", "Allsvenskan"),
     ("Czech-Republic", "Czech Liga"),
-    ("Scotland", "Premiership"),
-    ("Spain", "La Liga"),
-    ("Spain", "Segunda División"),
-    ("Switzerland", "Super League"),
-    ("Turkey", "Süper Lig"),
+    ("Germany", "Bundesliga"),
+    ("France", "Ligue 1"),
 ]
 
-# Known feed ids for competitions whose accented names have been lost before.
+# Every competition pinned to its current feed id (resolved 2026-08-16) so
+# league resolution is bulletproof even if a name or accent drifts in the feed.
 PINNED_IDS = {
-    ("Spain", "Segunda División"): 141,
+    ("Spain", "La Liga"): 140,
+    ("Italy", "Serie A"): 135,
+    ("Italy", "Serie B"): 136,
+    ("England", "Premier League"): 39,
+    ("England", "Championship"): 40,
+    ("Germany", "2. Bundesliga"): 79,
+    ("Netherlands", "Eredivisie"): 88,
+    ("Portugal", "Primeira Liga"): 94,
     ("Turkey", "Süper Lig"): 203,
+    ("Greece", "Super League 1"): 197,
+    ("Denmark", "Superliga"): 119,
+    ("Norway", "Eliteserien"): 103,
+    ("Switzerland", "Super League"): 207,
+    ("Scotland", "Premiership"): 179,
+    ("Austria", "Bundesliga"): 218,
+    ("Ireland", "Premier Division"): 357,
+    ("World", "UEFA Champions League"): 2,
+    ("World", "UEFA Europa League"): 3,
+    ("World", "UEFA Europa Conference League"): 848,
+    ("Belgium", "Jupiler Pro League"): 144,
+    ("Sweden", "Allsvenskan"): 113,
+    ("Czech-Republic", "Czech Liga"): 345,
+    ("Germany", "Bundesliga"): 78,
+    ("France", "Ligue 1"): 61,
 }
