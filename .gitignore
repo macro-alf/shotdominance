@@ -16,3 +16,7 @@ venv/
 
 # secrets - never commit the API key / bot token
 .env
+
+# backtest artefacts
+backtest_cache/
+backtest_rows.csv
