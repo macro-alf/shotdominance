@@ -144,6 +144,8 @@ ALIASES = {
     "fc heidenheim": "heidenheim",
     "mainz 05": "mainz",
     "vfb stuttgart": "stuttgart",
+    "arminia bielefeld": "bielefeld",
+    "greuther fuerth": "greuther furth",
     "eintracht frankfurt": "ein frankfurt",
     "fc cologne": "fc koln",
     "hertha berlin": "hertha",
@@ -156,11 +158,15 @@ ALIASES = {
     "deportivo alaves": "alaves",
     "real valladolid": "valladolid",
     "rayo vallecano": "vallecano",
+    "sd huesca": "huesca",
     "ac milan": "milan",
     "internazionale": "inter",
     "hellas verona": "verona",
+    "parma calcio 1913": "parma",
     "clermont foot": "clermont",
-    "saint etienne": "st etienne",
+    # Understat writes "Saint-Etienne"; norm() strips the hyphen before lookup,
+    # so the key must be the already-normalised form.
+    "saintetienne": "st etienne",
 }
 
 _STRIP = re.compile(r"[^a-z0-9 ]")

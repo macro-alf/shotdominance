@@ -31,6 +31,27 @@ def test_metrics_accumulate_and_are_cumulative():
     assert goals["h"][19] == 0 and goals["h"][20] == 1
 
 
+def test_no_lookahead_at_the_checkpoint_boundary():
+    """The one bug that would manufacture an edge out of nothing: a snapshot at
+    minute m must contain everything up to and including m, and NOTHING after.
+    A single minute of leakage at the 45' checkpoint would let the rule see
+    shots that had not been taken yet."""
+    shots = {"h": [shot(44, "h", "Goal"), shot(45, "h", "SavedShot"),
+                   shot(46, "h", "Goal"), shot(70, "h")],
+             "a": []}
+    series, goals = reconstruct.build(shots)
+
+    assert series["h"][45]["shots"] == 2        # minutes 44 and 45 only
+    assert series["h"][45]["sot"] == 2
+    assert goals["h"][45] == 1                  # the 46' goal has not happened
+    assert series["h"][46]["shots"] == 3 and goals["h"][46] == 2
+
+    # and the history handed to the rule engine stops at the checkpoint
+    hist = reconstruct.history_to(series, goals, "h", 45)
+    assert max(s.minute for s in hist) == 45
+    assert all(s.fav["shots"] <= 2 for s in hist)
+
+
 def test_shot_on_post_is_not_on_target():
     series, _ = reconstruct.build({"h": [shot(10, "h", "ShotOnPost")], "a": []})
     assert series["h"][20]["shots"] == 1 and series["h"][20]["sot"] == 0

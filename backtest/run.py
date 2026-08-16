@@ -103,6 +103,8 @@ def main(argv=None):
                 out = replay.replay_match(fx, shots)
                 if not out:
                     skipped += 1
+                for r in out:
+                    r["season"], r["league"] = season, lg
                 rows.extend(out)
                 if i % 50 == 0:
                     print("  %s %s: %d/%d matches, %d rows"
@@ -148,6 +150,23 @@ def main(argv=None):
             per_match[r["match_id"]] = r
     report(list(per_match.values()),
            "PER MATCH - first fired checkpoint vs never-fired (independent)")
+
+    # Stability. A real signal repeats across seasons and leagues; an artefact
+    # concentrates in one slice. This is the check that matters most, because
+    # the rule was fixed in advance - nothing here has been fitted to the data.
+    for key, title in (("season", "BY SEASON"), ("league", "BY LEAGUE")):
+        print("\n%s (signalled vs not, per checkpoint)" % title)
+        print("  %-12s %7s %8s %9s %8s" % (key, "signals", "win%", "base%", "lift"))
+        for val in sorted({r[key] for r in rows}):
+            sub = [r for r in rows if r[key] == val]
+            f = [r for r in sub if r["fired"]]
+            q = [r for r in sub if not r["fired"]]
+            if not f or not q:
+                continue
+            _, nf, pf, _, _ = rate(f)
+            _, _, pq, _, _ = rate(q)
+            print("  %-12s %7d %7.1f%% %8.1f%% %+7.1f pp"
+                  % (val, nf, 100 * pf, 100 * pq, 100 * (pf - pq)))
 
 
 if __name__ == "__main__":

@@ -5,12 +5,6 @@ for context. Last updated 2026-08-16.
 
 ## High value
 
-- [ ] **Backtest — Phase 1 (signal validation, no odds).** Reconstruct the 45'–75'
-  triggers from **Understat** shot-event data (free; EPL/La Liga/Bundesliga/
-  Serie A/Ligue 1 — reconstruct cumulative shots/xG/sot/box per minute) and settle
-  on final results. Answers: *does shot dominance while not winning predict the
-  team going on to win/draw above base rate?* — independent of pricing.
-
 - [ ] **Phase 1b — feature exploration: where does the lift live, and can the
   51.8% be raised?** Queued 2026-08-16 after Phase 1 showed +12.5pp (z=4.17).
 
@@ -137,4 +131,7 @@ settle by side + `final_score` · UTF-8 stdout fix (was crashing endday's report
 watchlist tightened to Tier 1+2 (dropped Ligue 2 & Spain Segunda, added Ireland &
 Allsvenskan) · time-remaining conviction factor (boost-only) · **"1a" early
 snapshots (`RECORD_LEAD=5`) — unblocks the momentum branch at the 45' checkpoint**
-· `daily.pace()` `WATCH_FROM` derived from the engine gate instead of a stale 30.
+· `daily.pace()` `WATCH_FROM` derived from the engine gate instead of a stale 30
+· test suite no longer writes the live `state3.json` · **Backtest Phase 1 —
+signal validated, +14.1pp lift (z=8.9) over 2020–23, positive in 4/4 seasons and
+5/5 leagues** (see `STRATEGY.md`).

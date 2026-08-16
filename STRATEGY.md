@@ -91,10 +91,35 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
 - First real settled bet: Norwich to win @ 2.60, €781, **LOST** (n=1, noise).
 - ~5–6 days of forward logs accumulating in `logs/`.
 
+## What Phase 1 established (2026-08-16)
+The signal has **real predictive content**. `backtest/` replays the live rule
+(`rules.evaluate` itself, not a reimplementation) over Understat shot events for
+2020–2023, five leagues, with the favourite gate taken from football-data.co.uk
+pre-match odds. 17,686 eligible checkpoints, 3,178 fixtures, 994 signals:
+
+| population | n | win% | lift |
+|---|---|---|---|
+| all eligible (base rate) | 17,686 | 37.8% | — |
+| rule passed, pre-conviction | 3,276 | 44.9% | +7.1pp |
+| **signalled** | **994** | **51.1%** | **+14.1pp (z=8.9)** |
+| per match, independent | 754 | 51.6% | +9.1pp (z=4.4) |
+
+Positive in **4/4 seasons** (+8.8 to +17.5pp) and **5/5 leagues** (+12.6 to
++17.1pp). The rule was **pre-specified** — fixed in HANDOVER.md and running live
+before this test existed — so nothing here is fitted. The conviction gate earns
+its place: rule-alone is 44.9%, conviction lifts it to 51.1%.
+
+**This is not an edge.** A favourite dominating shots has already shortened
+in-play; Phase 1 deliberately ignores price. Whether 51.1% beats the price you
+would actually get is Phase 2 (Betfair), and nothing before it should drive
+sizing.
+
 ## What is NOT established (from HANDOVER.md — read it)
-- **No measured edge.** The edge curve behind Kelly is Monte-Carlo model output
-  on the *old* rules; it bounds edge between +22% and −0.2% and nobody knows
-  where reality sits.
+- **No measured edge vs price.** Phase 1 shows the signal predicts the
+  *outcome*; it says nothing about whether the *price* compensates.
+- **The edge curve behind Kelly is Monte-Carlo model output** on the *old*
+  rules; it bounds edge between +22% and −0.2% and nobody knows where reality
+  sits. Sizing therefore rests on an unmeasured number — see `TODO.md`.
 - Detecting a true +10% ROI at 95% confidence needs **~1,900 settled bets**.
 - **Do not tune on backtests** — an optimisation pass overfit a placebo variable
   (in-sample +119% ROI → +39.5% out of sample).
