@@ -103,6 +103,30 @@ class ApiClient:
         return []
 
 
+def quota(api):
+    """(used_today, daily_limit) from /status, or (None, None) if unreadable.
+
+    The day's allowance is shared with anything else that touches the key - a
+    one-off coverage sweep, a manual experiment, an earlier supervisor run. On
+    2026-08-16 a morning sweep over 686 competitions took most of the 7500 and
+    the evening monitor ran into the wall mid-session, going blind for the rest
+    of the night. So the budget has to be ASKED FOR, not assumed.
+
+    Note the per-response `x-ratelimit-requests-remaining` header is not
+    trustworthy: while the account was exhausted it still read 7499 of 7500.
+    This endpoint's body is the honest source. /status does not itself count
+    against the quota.
+    """
+    resp = api.get("/status")
+    if isinstance(resp, list):          # error or unexpected shape
+        return None, None
+    reqs = (resp or {}).get("requests") or {}
+    cur, lim = reqs.get("current"), reqs.get("limit_day")
+    if cur is None or lim is None:
+        return None, None
+    return int(cur), int(lim)
+
+
 # --- statistics -------------------------------------------------------------
 def parse_stats(rows, team_id):
     """Pull the four metrics for one team. Returns (values, xg_seen).

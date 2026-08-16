@@ -149,7 +149,7 @@ def suspend():
 
 
 def main():
-    global _api, _tg, _daily_log
+    global _api, _tg, _daily_log, DAILY_BUDGET
     dry = "--dry-run" in sys.argv
     no_sleep = "--no-sleep" in sys.argv
     if not config.API_KEY:
@@ -161,6 +161,35 @@ def main():
     day = dt.datetime.now().strftime("%Y-%m-%d")
     _daily_log = open(os.path.join("logs", "daily-%s.log" % day), "a",
                       encoding="utf-8", buffering=1)
+
+    # Budget from what is ACTUALLY left today, not from a hardcoded allowance.
+    # The key is shared with anything else that used it today; on 2026-08-16 a
+    # morning coverage sweep took most of the 7500 and the evening monitor went
+    # blind mid-session because pacing still assumed a full day.
+    used, limit = apifootball.quota(_api)
+    if used is None:
+        err = getattr(_api, "last_error", None)
+        if err:
+            # /status is unreadable BECAUSE the key is being refused. Launching
+            # here is what produced the 2026-08-16 outage: a monitor that polled
+            # blind for hours because nothing checked before starting.
+            say("ABORT: API is refusing requests (%s)" % err)
+            _tg.send("Monitor NOT started - API-Football is refusing requests:\n"
+                     "%s\nQuota resets 00:00 UTC." % err)
+            return
+        say("WARNING: could not read /status - pacing against the configured "
+            "DAILY_BUDGET=%d, which may not be what is left" % DAILY_BUDGET)
+    else:
+        left = max(limit - used, 0)
+        say("quota: %d of %d used today, %d left" % (used, limit, left))
+        if left < QUOTA_RESERVE:
+            say("ABORT: only %d requests left - not enough to monitor safely" % left)
+            _tg.send("Monitor NOT started: only %d of %d API requests left for "
+                     "today (resets 00:00 UTC)." % (left, limit))
+            return
+        if left < DAILY_BUDGET:
+            say("budget reduced %d -> %d to fit what remains" % (DAILY_BUDGET, left))
+            DAILY_BUDGET = left
 
     say("resolving competitions")
     ids = apifootball.resolve_leagues(_api)

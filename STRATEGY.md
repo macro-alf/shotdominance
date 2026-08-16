@@ -81,6 +81,13 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   `monitor.py` child (killing only daily.py orphans the monitor → double-run) →
   `Start-ScheduledTask InplayMonitor`.
 - **One instance per Telegram token** (getUpdates is single-consumer).
+- **The 7500/day API quota is shared with everything that touches the key** —
+  coverage sweeps, manual experiments, earlier supervisor runs. `daily.py` reads
+  `/status` at startup and paces against what is actually left, aborting (with a
+  Telegram message) rather than launching a monitor that will go blind. Do not
+  run a full coverage sweep on a match day. The per-response
+  `x-ratelimit-requests-remaining` header is **not** reliable — it read 7499 of
+  7500 while the account was actually exhausted; `/status` is the honest source.
 
 ## Current state (2026-08-16)
 - Live on the current code, watchlist, and time factor.

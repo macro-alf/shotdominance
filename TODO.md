@@ -91,6 +91,16 @@ for context. Last updated 2026-08-16.
     It also keeps the blotter clean as a measurement instrument, which is
     currently its main job.
 
+- [ ] **Budget the one-off survey scripts.** The 2026-08-16 outage was caused by
+  a morning coverage sweep over 686 competitions (455 leagues + 231 cups, ~6–8
+  fixtures sampled each) eating most of the 7500/day allowance; the evening
+  monitor then hit the wall at ~17:15 and went blind for the rest of the night.
+  `daily.py` now reads `/status` and paces against what is actually left, and
+  aborts rather than starting blind — but the survey scripts themselves are
+  still unbudgeted. Either cap them, run them on a no-fixture day, or have them
+  check remaining quota first and stop. **Do not run a full coverage sweep on a
+  match day.**
+
 ## Medium
 
 - [ ] **"1b" — evaluate every poll once eligible, not only at 5-min checkpoints.**

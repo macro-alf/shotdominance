@@ -27,3 +27,27 @@ def test_expected_additions_present():
     for uefa in ("UEFA Champions League", "UEFA Europa League",
                  "UEFA Europa Conference League"):
         assert ("World", uefa) in config.LEAGUES
+
+
+# --- quota awareness --------------------------------------------------------
+class StatusApi:
+    def __init__(self, body):
+        self.body = body
+
+    def get(self, path, **p):
+        return self.body
+
+
+def test_quota_reads_status():
+    from shotdominance import apifootball
+    api = StatusApi({"requests": {"current": 5200, "limit_day": 7500}})
+    assert apifootball.quota(api) == (5200, 7500)
+
+
+def test_quota_is_unreadable_when_the_api_errors():
+    """An exhausted account returns an empty LIST, not the status object. The
+    supervisor must fall back rather than treat that as 'zero used'."""
+    from shotdominance import apifootball
+    assert apifootball.quota(StatusApi([])) == (None, None)
+    assert apifootball.quota(StatusApi({})) == (None, None)
+    assert apifootball.quota(StatusApi({"requests": {}})) == (None, None)
