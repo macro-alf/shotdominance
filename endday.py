@@ -12,6 +12,11 @@ import os
 import subprocess
 import sys
 
+try:                       # force UTF-8 stdout (accented team names, Windows)
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 BAR = "=" * 74
 SUB = "-" * 74
 
@@ -19,7 +24,8 @@ SUB = "-" * 74
 def run_review(args, timeout):
     try:
         r = subprocess.run([sys.executable, "review.py"] + args,
-                           capture_output=True, text=True, timeout=timeout)
+                           capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace")
         out = r.stdout or "(review.py produced no output)"
         if r.stderr.strip():
             out += "\n--- review.py stderr ---\n" + r.stderr

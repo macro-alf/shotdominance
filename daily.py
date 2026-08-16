@@ -30,7 +30,16 @@ import sys
 import threading
 import time
 
+try:                       # force UTF-8 stdout (accented team names, Windows)
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 from shotdominance import apifootball, config, telegram
+
+# ensure the monitor and endday children we launch also emit UTF-8
+os.environ["PYTHONUTF8"] = "1"
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 LEAD_MIN = int(os.getenv("LEAD_MIN", "15"))
 TAIL_MIN = int(os.getenv("TAIL_MIN", "15"))

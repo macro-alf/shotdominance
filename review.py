@@ -17,6 +17,11 @@ Writes review_rows.csv - one row per evaluated checkpoint - for pivoting.
 from __future__ import annotations
 import os, re, csv, sys, glob, collections
 
+try:                       # never die printing an accented (or mangled) team
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # name on Windows
+except Exception:
+    pass
+
 DOM_RATIO = float(os.getenv("DOM_RATIO", "0.50"))
 NEED = 2
 FLOOR, CEIL = 1.75, 4.00

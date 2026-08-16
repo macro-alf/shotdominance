@@ -12,6 +12,11 @@ dominating the shot count, and records bets you tell it you placed by replying
 import sys
 import time
 
+try:                       # Windows pipes default to cp1252; force UTF-8 so
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # accented team
+except Exception:          # names round-trip cleanly through daily.py's reader
+    pass
+
 from shotdominance import apifootball, config, engine, telegram
 
 
