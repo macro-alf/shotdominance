@@ -252,3 +252,51 @@ def test_a_quiet_evening_is_not_reported_as_an_outage():
         for _ in range(10):
             mon.poll()
     assert tg.sent == []
+
+
+# --- quota guard ------------------------------------------------------------
+class QuotaApi(CarryStubApi):
+    """Reports a shrinking daily allowance via /status."""
+    def __init__(self, left):
+        super().__init__()
+        self.left = left
+        self.last_error = None
+
+    def get(self, path, **p):
+        if path == "/status":
+            return {"requests": {"current": 7500 - self.left, "limit_day": 7500}}
+        return super().get(path, **p)
+
+
+def _run(mon, n):
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _ in range(n):
+            mon.poll()
+
+
+def test_quota_guard_warns_once_and_slows_polling():
+    tg = StubTg()
+    mon = engine.Monitor(QuotaApi(left=400), tg, {1})
+    start = mon.poll_seconds
+    _run(mon, config.QUOTA_CHECK_POLLS)
+    assert mon.poll_seconds > start          # stretched to save what is left
+    assert len(tg.sent) == 1 and "quota running low" in tg.sent[0]
+
+    _run(mon, config.QUOTA_CHECK_POLLS * 2)
+    assert len(tg.sent) == 1                 # warned once, does not nag
+    assert mon.poll_seconds <= config.QUOTA_POLL_MAX
+
+
+def test_quota_guard_is_silent_when_there_is_plenty_left():
+    tg = StubTg()
+    mon = engine.Monitor(QuotaApi(left=6000), tg, {1})
+    _run(mon, config.QUOTA_CHECK_POLLS * 2)
+    assert tg.sent == [] and mon.poll_seconds == config.POLL_SECONDS
+
+
+def test_quota_guard_does_not_check_every_poll():
+    """The check costs a request; it must be periodic, not per poll."""
+    api = QuotaApi(left=6000)
+    mon = engine.Monitor(api, StubTg(), {1})
+    _run(mon, config.QUOTA_CHECK_POLLS - 1)
+    assert mon.polls == config.QUOTA_CHECK_POLLS - 1

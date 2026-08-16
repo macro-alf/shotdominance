@@ -51,7 +51,8 @@ def main():
             mon.poll()
         except Exception as e:
             print("poll failed:", e, flush=True)
-        time.sleep(config.POLL_SECONDS)
+        # the engine may stretch this when the day's quota runs low
+        time.sleep(mon.poll_seconds)
 
 
 if __name__ == "__main__":

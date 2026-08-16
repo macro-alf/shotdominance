@@ -38,6 +38,9 @@ class Monitor:
         self.xg_seen = False
         self.feed_bad = 0        # consecutive polls the API refused
         self.feed_alerted = 0.0  # when we last said so on Telegram
+        self.polls = 0           # polls this run, for the periodic quota check
+        self.quota_warned = False
+        self.poll_seconds = config.POLL_SECONDS   # monitor.py sleeps by this
 
     # --- persistence --------------------------------------------------------
     def save(self):
@@ -261,6 +264,7 @@ class Monitor:
                 del d[k]
 
         self._feed_health()
+        self._quota_guard()
 
         print("   pacing: %d calls in %.0fs, %.0fs waiting, %d retries"
               % (self.api.calls - calls_before, time.time() - t0,
@@ -268,6 +272,39 @@ class Monitor:
         print("poll: %d live, %d watched, %d requests total%s"
               % (len(fixtures), watched, self.api.reqs,
                  "" if self.xg_seen else "   [xG NOT SEEN YET]"), flush=True)
+
+    def _quota_guard(self):
+        """Watch the day's remaining allowance and slow down before hitting it.
+
+        Startup-only budgeting is not enough - the key is shared, and on
+        2026-08-16 a morning coverage sweep drained it while the monitor was
+        already running, which took the evening offline. Warn on Telegram while
+        there is still time to intervene, then stretch the poll interval so
+        whatever is left covers the rest of the night instead of being spent at
+        full speed an hour early.
+        """
+        self.polls += 1
+        if self.polls % config.QUOTA_CHECK_POLLS:
+            return
+        used, limit = apifootball.quota(self.api)
+        if used is None:
+            return
+        left = max(limit - used, 0)
+        print("   quota: %d of %d used, %d left" % (used, limit, left), flush=True)
+        if left > config.QUOTA_WARN:
+            return
+
+        if left <= config.QUOTA_SLOW and self.poll_seconds < config.QUOTA_POLL_MAX:
+            self.poll_seconds = min(self.poll_seconds * 2, config.QUOTA_POLL_MAX)
+            print("   slowing to POLL=%ds to stretch the remaining quota"
+                  % self.poll_seconds, flush=True)
+        if self.quota_warned:
+            return
+        self.quota_warned = True
+        self.tg.send("API quota running low: %d of %d left. Polling slowed to "
+                     "%ds. If this keeps dropping the monitor will go blind - "
+                     "quota resets 00:00 UTC."
+                     % (left, limit, self.poll_seconds))
 
     def _feed_health(self):
         """Say out loud when the feed dies, and when it comes back.

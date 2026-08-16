@@ -117,6 +117,17 @@ STATS_CARRY_TTL = _f("STATS_CARRY_TTL", 300.0)
 FEED_BAD_POLLS = _i("FEED_BAD_POLLS", 3)
 FEED_ALERT_COOLDOWN = _f("FEED_ALERT_COOLDOWN", 3600.0)
 
+# --- quota guard ------------------------------------------------------------
+# daily.py checks the remaining allowance once, at startup. That is not enough:
+# anything else touching the key during the day (a coverage sweep, a manual
+# experiment) can drain it while the monitor is mid-session, which is exactly
+# how 2026-08-16 went blind at 17:15. So re-check periodically and react before
+# the wall rather than at it. /status does not itself count against the quota.
+QUOTA_CHECK_POLLS = _i("QUOTA_CHECK_POLLS", 20)   # ~20 min at POLL=60
+QUOTA_WARN = _i("QUOTA_WARN", 1200)               # tell Telegram below this
+QUOTA_SLOW = _i("QUOTA_SLOW", 700)                # start stretching the interval
+QUOTA_POLL_MAX = _i("QUOTA_POLL_MAX", 300)        # slowest we will go
+
 # --- files ------------------------------------------------------------------
 BLOTTER_PATH = os.getenv("BLOTTER", "blotter.csv")
 STATE_PATH = os.getenv("STATE3", "state3.json")
