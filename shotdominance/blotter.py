@@ -16,13 +16,49 @@ COLS = ["placed_at", "fixture_id", "competition", "match", "minute", "back",
         "price_taken", "final_score", "status", "pnl"]
 
 
-def write(path, bets):
+def _key(row):
+    """Identity of a bet on disk: one wager on one fixture at one moment."""
+    return (str(row.get("placed_at", "")), str(row.get("fixture_id", "")))
+
+
+def read(path):
     try:
+        with open(path, newline="", encoding="utf-8") as fh:
+            return [r for r in csv.DictReader(fh) if r.get("placed_at")]
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        print("  ! blotter read failed:", e, flush=True)
+        return []
+
+
+def write(path, bets):
+    """Persist `bets`, MERGING with whatever is already on disk.
+
+    This used to truncate and rewrite from memory alone, which meant any loss of
+    in-memory state silently destroyed settled history. It did: on 2026-08-16 a
+    wiped state3.json left the monitor with an empty bet list, and the next
+    write deleted the Norwich bet (2026-08-15, -781) from the file. The
+    end-of-day report then read "win rate 100%, ROI +111.6%" off a single
+    surviving winner.
+
+    The blotter is the only instrument that can turn the modelled edge into a
+    measured one, and a betting record that quietly drops losers is worse than
+    no record at all. So rows on disk are never dropped: in-memory bets update
+    their matching row (settlement fills final_score/status/pnl) and anything
+    else on disk is preserved, ordered by when it was placed.
+    """
+    try:
+        merged = {}
+        for row in read(path):
+            merged[_key(row)] = {k: row.get(k, "") for k in COLS}
+        for b in bets:
+            merged[_key(b)] = {k: b.get(k, "") for k in COLS}
         with open(path, "w", newline="", encoding="utf-8") as fh:
             w = csv.DictWriter(fh, fieldnames=COLS)
             w.writeheader()
-            for b in bets:
-                w.writerow({k: b.get(k, "") for k in COLS})
+            for _k, row in sorted(merged.items()):
+                w.writerow(row)
     except Exception as e:
         print("  ! blotter write failed:", e, flush=True)
 
