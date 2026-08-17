@@ -80,7 +80,16 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
 - **Same-day deploy:** edit config → stop **both** `daily.py` and the
   `monitor.py` child (killing only daily.py orphans the monitor → double-run) →
   `Start-ScheduledTask InplayMonitor`.
-- **One instance per Telegram token** (getUpdates is single-consumer).
+- **One instance per Telegram token** for READING (getUpdates is single-consumer).
+  Sending is safe from any process, which is what lets `watchdog.py` alert.
+- **`watchdog.py` runs as its own scheduled task `InplayWatchdog`** (every 15 min,
+  08:00-07:00). `daily.py` publishes `logs/heartbeat.txt` with a state; if that
+  goes stale inside the active window the watchdog sends Telegram and restarts
+  `InplayMonitor` (once per hour max). States `finished`/`aborted` mean daily.py
+  meant to stop, so they are left alone. This exists because every other alert
+  lives inside `monitor.py` and is therefore useless when the supervisor is what
+  died - on 2026-08-17 `daily.py` stopped at 13:49 with no traceback and no
+  Telegram, and the evening's fixtures would have gone unwatched.
 - **The 7500/day API quota is shared with everything that touches the key** —
   coverage sweeps, manual experiments, earlier supervisor runs. `daily.py` reads
   `/status` at startup and paces against what is actually left, aborting (with a

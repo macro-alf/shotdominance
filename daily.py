@@ -90,6 +90,30 @@ def pace(pending, start_at, end_est):
     return poll, est, span_min, peak
 
 
+HEARTBEAT = os.path.join("logs", "heartbeat.txt")
+
+
+def beat(state):
+    """Publish liveness for watchdog.py.
+
+    Every alert in this system lives inside monitor.py, so when the SUPERVISOR
+    dies nothing says anything at all - on 2026-08-17 daily.py stopped at 13:49
+    with no error and no Telegram, and the evening's six fixtures would have
+    gone unmonitored if nobody had looked. A file the watchdog can age is the
+    only way to notice from outside the process.
+
+    `state` matters as much as the timestamp: a clean 'finished' must not be
+    mistaken for a crash, or the watchdog would restart the day every night.
+    """
+    try:
+        os.makedirs("logs", exist_ok=True)
+        with open(HEARTBEAT, "w", encoding="utf-8") as fh:
+            fh.write("%s %s\n" % (dt.datetime.now().isoformat(timespec="seconds"),
+                                  state))
+    except Exception as e:
+        print("  ! heartbeat write failed: %s" % e, flush=True)
+
+
 def clock(ts):
     return dt.datetime.fromtimestamp(ts).strftime("%H:%M")
 
@@ -125,6 +149,7 @@ def wait_until(target, label):
         if left <= 0:
             return
         say("%s in %d min (at %s)" % (label, int(left // 60) + 1, clock(target)))
+        beat("waiting-for-launch")
         time.sleep(min(left, 600))
 
 
@@ -174,6 +199,7 @@ def main():
             # here is what produced the 2026-08-16 outage: a monitor that polled
             # blind for hours because nothing checked before starting.
             say("ABORT: API is refusing requests (%s)" % err)
+            beat("aborted")
             _tg.send("Monitor NOT started - API-Football is refusing requests:\n"
                      "%s\nQuota resets 00:00 UTC." % err)
             return
@@ -184,6 +210,7 @@ def main():
         say("quota: %d of %d used today, %d left" % (used, limit, left))
         if left < QUOTA_RESERVE:
             say("ABORT: only %d requests left - not enough to monitor safely" % left)
+            beat("aborted")
             _tg.send("Monitor NOT started: only %d of %d API requests left for "
                      "today (resets 00:00 UTC)." % (left, limit))
             return
@@ -204,6 +231,7 @@ def main():
 
     if not pending:
         say("no fixtures left to play today - leaving the PC awake, exiting")
+        beat("finished")
         return
 
     first, last = pending[0][0], pending[-1][0]
@@ -215,6 +243,7 @@ def main():
            clock(last + HARD_STOP_MIN * 60)))
     say("then +%d min tail, then %s"
         % (TAIL_MIN, "NOTHING (--no-sleep)" if no_sleep else "suspend"))
+    beat("planning")
     p_s, p_est, p_span, p_peak = pace(pending, start_at, last + 135 * 60)
     say("pacing: %.1fh window, %d fixtures, peak %d overlapping -> POLL=%ds, "
         "~%d of %d requests" % (p_span / 60.0, len(pending), p_peak, p_s,
@@ -265,12 +294,15 @@ def main():
                 say("still in play: %s" % ", ".join(
                     "%s (%s)" % (x[2]["teams"]["home"]["name"], x[1])
                     for x in unfinished[:4]))
+                beat("monitoring")
                 time.sleep(CHECK_EVERY)
             else:
+                beat("monitoring")
                 time.sleep(60)
         else:
             say("hard stop reached with fixtures still open - stopping anyway")
 
+        beat("ending")
         say("waiting %d min tail before stopping the monitor" % TAIL_MIN)
         time.sleep(TAIL_MIN * 60)
     except KeyboardInterrupt:
@@ -287,6 +319,7 @@ def main():
     say("monitor stopped, log at %s" % log)
     os.system('"%s" endday.py' % sys.executable)
     say("end-of-day report step finished")
+    beat("finished")
     if no_sleep:
         say("--no-sleep set, staying awake")
     else:
@@ -294,4 +327,20 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        beat("finished")
+    except Exception:
+        # A supervisor that dies quietly takes the whole evening with it.
+        import traceback
+        tb = traceback.format_exc()
+        print(tb, flush=True)
+        beat("crashed")
+        try:
+            (_tg or telegram.Telegram()).send(
+                "SUPERVISOR CRASHED - no monitoring tonight until this is "
+                "restarted.\n%s" % tb[-600:])
+        except Exception:
+            pass
+        raise
