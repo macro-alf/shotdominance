@@ -43,7 +43,14 @@ TASK = os.getenv("MONITOR_TASK", "InplayMonitor")
 STALE_MIN = int(os.getenv("WATCHDOG_STALE_MIN", "25"))
 # Only act inside the window where the supervisor is expected to be up. Outside
 # it the PC is usually asleep and this task is not running anyway.
-ACTIVE_FROM, ACTIVE_TO = 8, 1          # 08:00 -> 01:00 next day
+#
+# ACTIVE_FROM MUST BE LATER THAN THE InplayMonitor START TIME. This machine is
+# not reliably awake before 09:30, so the supervisor is scheduled for 09:45 and
+# this sits at 10:00 - otherwise every morning between the trigger and the PC
+# actually waking would read as "supervisor never started today" and fire a
+# false alarm. If you move the InplayMonitor schedule, move this with it.
+ACTIVE_FROM = int(os.getenv("WATCHDOG_ACTIVE_FROM", "10"))
+ACTIVE_TO = int(os.getenv("WATCHDOG_ACTIVE_TO", "1"))     # 10:00 -> 01:00 next day
 RESTART_COOLDOWN_MIN = int(os.getenv("WATCHDOG_COOLDOWN_MIN", "60"))
 OK_STATES = ("finished", "aborted")
 

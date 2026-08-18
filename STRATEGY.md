@@ -70,10 +70,11 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   season start) — verify against completed seasons.
 
 ## Operations
-- Runs via Windows scheduled task **InplayMonitor** (daily 08:00, StartIn = repo,
+- Runs via Windows scheduled task **InplayMonitor** (daily **09:45**, StartIn = repo,
   `MONITOR_SCRIPT=monitor.py`, `END_ACTION=sleep`). `daily.py` schedules around
-  kickoffs, launches `monitor.py`, runs `endday.py`, sleeps the PC; the 08:00
-  wake restarts the cycle.
+  kickoffs, launches `monitor.py`, runs `endday.py`, sleeps the PC; the 09:45
+  wake restarts the cycle. **09:45 because this PC is not reliably awake before
+  09:30** — earliest kickoffs in the watchlist are ~12:15, so the lead is ample.
 - **Secrets** are Windows **User env vars** (`APIFOOTBALL_KEY`,
   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) — never in the repo; the Claude Bash
   tool doesn't inherit them (hydrate from User scope when launching by hand).
@@ -90,6 +91,9 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   previous day during the active window, which means the supervisor never
   started (2026-08-18: the 08:00 task missed its run while the PC slept and
   the stale `finished` state kept the watchdog quiet all morning). The task
+  runs 10:05-01:05 every 15 min. Its active window (10:00) MUST stay LATER than
+  the InplayMonitor start (09:45), or the gap before the PC wakes reads as a
+  missed start and false-alarms every morning. The task
   uses a DAILY trigger with a repetition attached - a `-Once` trigger with a
   RepetitionDuration expires after its window and silently stops recurring.
   This exists because every other alert

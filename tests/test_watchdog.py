@@ -57,11 +57,11 @@ def test_nothing_fires_outside_the_active_window(tmp_path, monkeypatch):
 
 def test_active_window_spans_midnight():
     at = lambda h: dt.datetime(2026, 8, 17, h, 0)
-    assert watchdog.in_active_window(at(9))
+    assert watchdog.in_active_window(at(11))
     assert watchdog.in_active_window(at(23))
     assert watchdog.in_active_window(at(0))     # 00:xx, day still running
     assert not watchdog.in_active_window(at(4))
-    assert not watchdog.in_active_window(at(7))
+    assert not watchdog.in_active_window(at(9))   # PC may not be awake yet
 
 
 # --- the 2026-08-18 blind spot ---------------------------------------------
@@ -77,7 +77,7 @@ def test_yesterdays_finished_during_the_active_window_is_a_problem(tmp_path,
     """Regression: on 2026-08-18 the 08:00 task missed its run while the PC
     slept. The heartbeat still read 'finished' from 23:25 the night before, so
     the watchdog treated it as a deliberate stop and said nothing all morning."""
-    now = dt.datetime(2026, 8, 18, 9, 0)
+    now = dt.datetime(2026, 8, 18, 10, 30)
     _write_dated(tmp_path, monkeypatch, dt.datetime(2026, 8, 17, 23, 25), "finished")
     problem, detail = watchdog.diagnose(now=now)
     assert problem == "supervisor never started today"
