@@ -62,3 +62,39 @@ def test_active_window_spans_midnight():
     assert watchdog.in_active_window(at(0))     # 00:xx, day still running
     assert not watchdog.in_active_window(at(4))
     assert not watchdog.in_active_window(at(7))
+
+
+# --- the 2026-08-18 blind spot ---------------------------------------------
+def _write_dated(tmp_path, monkeypatch, when, state):
+    p = tmp_path / "heartbeat.txt"
+    p.write_text("%s %s\n" % (when.isoformat(timespec="seconds"), state),
+                 encoding="utf-8")
+    monkeypatch.setattr(watchdog, "HEARTBEAT", str(p))
+
+
+def test_yesterdays_finished_during_the_active_window_is_a_problem(tmp_path,
+                                                                   monkeypatch):
+    """Regression: on 2026-08-18 the 08:00 task missed its run while the PC
+    slept. The heartbeat still read 'finished' from 23:25 the night before, so
+    the watchdog treated it as a deliberate stop and said nothing all morning."""
+    now = dt.datetime(2026, 8, 18, 9, 0)
+    _write_dated(tmp_path, monkeypatch, dt.datetime(2026, 8, 17, 23, 25), "finished")
+    problem, detail = watchdog.diagnose(now=now)
+    assert problem == "supervisor never started today"
+    assert "2026-08-17" in detail
+
+
+def test_todays_finished_is_still_fine(tmp_path, monkeypatch):
+    """daily.py legitimately exits early when there are no fixtures - that must
+    not be mistaken for a missed start."""
+    now = dt.datetime(2026, 8, 18, 11, 0)
+    _write_dated(tmp_path, monkeypatch, dt.datetime(2026, 8, 18, 9, 10), "finished")
+    assert watchdog.diagnose(now=now)[0] is None
+
+
+def test_last_nights_finished_just_after_midnight_is_fine(tmp_path, monkeypatch):
+    """00:30 is inside the active window but before the morning start, so
+    yesterday's clean finish is correct, not a missed run."""
+    now = dt.datetime(2026, 8, 18, 0, 30)
+    _write_dated(tmp_path, monkeypatch, dt.datetime(2026, 8, 17, 23, 25), "finished")
+    assert watchdog.diagnose(now=now)[0] is None

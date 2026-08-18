@@ -86,7 +86,13 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   08:00-07:00). `daily.py` publishes `logs/heartbeat.txt` with a state; if that
   goes stale inside the active window the watchdog sends Telegram and restarts
   `InplayMonitor` (once per hour max). States `finished`/`aborted` mean daily.py
-  meant to stop, so they are left alone. This exists because every other alert
+  meant to stop, so they are left alone - EXCEPT when the beat is from a
+  previous day during the active window, which means the supervisor never
+  started (2026-08-18: the 08:00 task missed its run while the PC slept and
+  the stale `finished` state kept the watchdog quiet all morning). The task
+  uses a DAILY trigger with a repetition attached - a `-Once` trigger with a
+  RepetitionDuration expires after its window and silently stops recurring.
+  This exists because every other alert
   lives inside `monitor.py` and is therefore useless when the supervisor is what
   died - on 2026-08-17 `daily.py` stopped at 13:49 with no traceback and no
   Telegram, and the evening's fixtures would have gone unwatched.

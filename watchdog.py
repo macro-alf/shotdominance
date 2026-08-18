@@ -49,14 +49,15 @@ OK_STATES = ("finished", "aborted")
 
 
 def read_heartbeat():
-    """-> (age_minutes, state) or (None, None) when there is no heartbeat."""
+    """-> (age_minutes, state, date) or (None, None, None) when unreadable."""
     try:
         with open(HEARTBEAT, encoding="utf-8") as fh:
             stamp, _, state = fh.read().strip().partition(" ")
-        age = (dt.datetime.now() - dt.datetime.fromisoformat(stamp))
-        return age.total_seconds() / 60.0, (state or "unknown").strip()
+        when = dt.datetime.fromisoformat(stamp)
+        age = (dt.datetime.now() - when)
+        return age.total_seconds() / 60.0, (state or "unknown").strip(), when.date()
     except Exception:
-        return None, None
+        return None, None, None
 
 
 def in_active_window(now=None):
@@ -82,14 +83,24 @@ def mark_acted():
         pass
 
 
-def diagnose():
+def diagnose(now=None):
     """-> (problem_or_None, detail). Pure: makes no changes, sends nothing."""
-    age, state = read_heartbeat()
-    if not in_active_window():
+    now = now or dt.datetime.now()
+    age, state, when = read_heartbeat()
+    if not in_active_window(now):
         return None, "outside the active window"
     if age is None:
         return "no heartbeat", "logs/heartbeat.txt missing or unreadable"
     if state in OK_STATES:
+        # A deliberate stop is fine - but only for TODAY. Yesterday's clean
+        # 'finished' sitting there during the active window means the
+        # supervisor never started this morning, which is exactly what happened
+        # on 2026-08-18: the 08:00 task missed its run while the PC slept, the
+        # heartbeat still read 'finished' from 23:25 the night before, and this
+        # watchdog stayed silent because the state looked deliberate.
+        if when < now.date() and now.hour >= ACTIVE_FROM:
+            return ("supervisor never started today",
+                    "last beat %s on %s, %.0f min ago" % (state, when, age))
         return None, "state=%s (deliberate), %.0f min old" % (state, age)
     if age > STALE_MIN:
         return ("stale heartbeat",
