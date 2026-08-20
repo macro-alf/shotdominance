@@ -287,9 +287,23 @@ def main():
                 return
             if time.time() >= poll_from:
                 rest = todays_fixtures(ids)
+                # Finishing the day requires POSITIVE evidence that every
+                # tracked fixture is done. _api.get() returns [] on any failure,
+                # so an empty or short response used to be indistinguishable
+                # from "all finished" and shut the monitor down: on 2026-08-19
+                # the first end-check at 22:40 declared the day over while
+                # Atletico was at 85' and Slovan at 90'. Nothing was open that
+                # night, but an open bet would not have settled, and with
+                # staggered kickoffs it would stop the monitor mid-evening.
+                if len(rest) < len(pending):
+                    say("end-check saw %d of %d tracked fixtures - treating as "
+                        "UNKNOWN, not finished" % (len(rest), len(pending)))
+                    beat("monitoring")
+                    time.sleep(CHECK_EVERY)
+                    continue
                 unfinished = [x for x in rest if x[1] not in DONE_STATUS]
                 if not unfinished:
-                    say("all tracked fixtures finished")
+                    say("all %d tracked fixtures finished" % len(rest))
                     break
                 say("still in play: %s" % ", ".join(
                     "%s (%s)" % (x[2]["teams"]["home"]["name"], x[1])
