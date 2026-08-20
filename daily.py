@@ -186,6 +186,11 @@ def main():
     day = dt.datetime.now().strftime("%Y-%m-%d")
     _daily_log = open(os.path.join("logs", "daily-%s.log" % day), "a",
                       encoding="utf-8", buffering=1)
+    # Send the API client's warnings to the daily log too. Without this they go
+    # to stdout only, so a failed schedule request leaves no trace in
+    # logs/daily-*.log - which is why the 2026-08-19 early stop had to be
+    # inferred from the monitor log instead of read directly.
+    apifootball.set_logger(say)
 
     # Budget from what is ACTUALLY left today, not from a hardcoded allowance.
     # The key is shared with anything else that used it today; on 2026-08-16 a

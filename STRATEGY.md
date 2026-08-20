@@ -100,6 +100,10 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   lives inside `monitor.py` and is therefore useless when the supervisor is what
   died - on 2026-08-17 `daily.py` stopped at 13:49 with no traceback and no
   Telegram, and the evening's fixtures would have gone unwatched.
+- **API-client failures are logged to `logs/daily-*.log`**, not just stdout:
+  `daily.py` calls `apifootball.set_logger(say)` at startup. Without it a
+  failed schedule request left no trace in the daily log and a post-mortem
+  had to infer it from the monitor log (2026-08-19).
 - **The 7500/day API quota is shared with everything that touches the key** —
   coverage sweeps, manual experiments, earlier supervisor runs. `daily.py` reads
   `/status` at startup and paces against what is actually left, aborting (with a

@@ -44,6 +44,27 @@ def dc_key(value):
     return None
 
 
+def _default_log(msg):
+    print(msg, flush=True)
+
+
+log = _default_log
+
+
+def set_logger(fn):
+    """Route this module's warnings and errors to a caller-supplied sink.
+
+    The client's failures used to print to stdout only. For monitor.py that is
+    fine - daily.py pumps its output into logs/monitor-*.log - but daily.py's
+    OWN calls went to the console and nowhere else, so a failed schedule
+    request left no trace in logs/daily-*.log. That is why the 2026-08-19
+    early-stop had to be inferred from the monitor log rather than read
+    directly. daily.py now points this at say().
+    """
+    global log
+    log = fn or _default_log
+
+
 class ApiClient:
     """Paced, rate-limit-aware HTTP client for one API key.
 
@@ -84,22 +105,22 @@ class ApiClient:
                 r.raise_for_status()
                 body = r.json()
             except Exception as e:
-                print("  ! %s failed: %s" % (path, e), flush=True)
+                log("  ! %s failed: %s" % (path, e))
                 return []
             errs = body.get("errors") or {}
             if isinstance(errs, dict) and "rateLimit" in errs:
                 self.retries += 1
                 back = 8 * (attempt + 1)
-                print("  ~ rate limited, backing off %ds (attempt %d/%d)"
-                      % (back, attempt + 1, self.max_retry), flush=True)
+                log("  ~ rate limited, backing off %ds (attempt %d/%d)"
+                    % (back, attempt + 1, self.max_retry))
                 time.sleep(back)
                 continue
             if errs:
-                print("  ! API errors:", errs, flush=True)
+                log("  ! API errors: %s" % (errs,))
             self.last_error = errs or None
             return body.get("response", [])
-        print("  ! gave up on %s after %d rate-limited attempts"
-              % (path, self.max_retry), flush=True)
+        log("  ! gave up on %s after %d rate-limited attempts"
+            % (path, self.max_retry))
         return []
 
 
@@ -304,7 +325,7 @@ def resolve_leagues(api):
     Czech aliaser, then PINNED_IDS as a last resort."""
     rows = api.get("/leagues")
     if not rows:
-        print("Could not load leagues - running with NO filter.")
+        log("Could not load leagues - running with NO filter.")
         return set()
     cat = [((r.get("country") or {}).get("name") or "",
             (r.get("league") or {}).get("name") or "",
