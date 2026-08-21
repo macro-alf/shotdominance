@@ -32,9 +32,15 @@ real result.
   flagging it approx and blocking the momentum branch at every 45' checkpoint.
 - **Realised** = value ≥ threshold **AND** opponent ≤ 50% of ours (dominance).
   When xG is missing the requirement is **2 of the 3** available metrics.
-- **Signal:** favourite not scored → ≥2 volume **AND** ≥2 momentum (an
-  incomplete momentum window blocks it). Favourite scored & level/behind → ≥2
-  momentum **OR** ≥2 cumulative vs a (goals+1)× bar.
+- **Signal:** favourite not scored → ≥2 volume **AND** ≥2 momentum. Favourite
+  scored & level/behind → ≥2 momentum **OR** ≥2 cumulative vs a (goals+1)× bar.
+- **A REAL 30-min window is required for BOTH branches** (2026-08-21). Without a
+  usable baseline the evaluation is `approx` — the whole match stands in for the
+  window — and nothing fires. Previously only the 0-goals branch refused these,
+  so a favourite that had scored could alert off the cumulative test while the
+  Telegram "Last 30 min" block showed whole-match totals. No alert should invite
+  a bet on evidence that was never measured. Inert in the backtest (reconstructed
+  history always has a baseline), so the Phase 1 result is unchanged.
 - **Price:** the signal price (win or DC) must be **1.75–4.00**; if no live price
   the condition is skipped and it still alerts. The last live price is **carried
   forward ≤180s** across blocked/suspended polls. Empty **stats** are likewise

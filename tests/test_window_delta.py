@@ -67,3 +67,32 @@ def test_a_complete_window_still_fires():
     ev = rules.evaluate(hist, "1", 45, stats(1.4, 14, 4, 8),
                         stats(0.2, 3, 1, 1), 0)
     assert ev.approx is False and ev.ok is True
+
+
+# --- no alert without a real window ----------------------------------------
+def test_scored_branch_cannot_fire_on_a_fabricated_window():
+    """The (goals+1)x cumulative test used to fire with no momentum check at
+    all. With an incomplete window the alert would print whole-match totals
+    under a 'Last 30 min' heading - a bet invited on evidence never measured."""
+    # no history at all -> no baseline -> approx
+    cur = stats(3.0, 30, 9, 18)          # far over even a 2x bar
+    ev = rules.evaluate({}, "1", 60, cur, stats(0.1, 2, 0, 1), 1)
+    assert ev.approx is True
+    assert ev.ok is False
+    assert "BLOCKED" in ev.basis
+
+
+def test_scored_branch_still_fires_with_a_real_window():
+    hist = {"1": [snap(30, stats(0.2, 3, 1, 1)), snap(60, stats(3.0, 30, 9, 18))]}
+    ev = rules.evaluate(hist, "1", 60, stats(3.0, 30, 9, 18),
+                        stats(0.1, 2, 0, 1), 1)
+    assert ev.approx is False and ev.ok is True
+
+
+def test_the_ajax_situation_is_blocked_end_to_end():
+    """Feed silent until minute 34: baseline at 15' all None, 13 shots by 45'.
+    Fired at conviction 85 on 2026-08-20; must not fire now."""
+    hist = {"1": [snap(15, stats()), snap(45, stats(None, 13, 3, 7))]}
+    ev = rules.evaluate(hist, "1", 45, stats(None, 13, 3, 7),
+                        stats(None, 5, 0, 3), 0)
+    assert ev.ok is False and ev.approx is True

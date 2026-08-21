@@ -12,6 +12,12 @@ ours. Signal logic then differs by whether the favourite has scored:
   favourite HAS scored and is level/behind (1-1, 2-2, 1-2):
       >=2 of 4 on momentum, OR >=2 of 4 on cumulative measured against a
       (fav_goals + 1)x threshold. Deliberately looser than the 0-0 case.
+
+BOTH branches additionally require a REAL trailing window. If no usable
+baseline exists WINDOW minutes back, the evaluation is approx - the whole match
+stands in for the window - and nothing fires, because an alert would then show
+cumulative totals under a "Last 30 min" heading and invite a bet on evidence
+that was never measured.
 """
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -186,6 +192,17 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
         basis = ("scored %d: momentum(%s) OR %dx cumulative(%s)"
                  % (fav_goals, "yes" if a else "no", mult, "yes" if b else "no"))
         extra = ["%dx bar: %s" % (mult, "  ".join(hard_det))]
+
+    # NO ALERT MAY REST ON - OR DISPLAY - A MOMENTUM WINDOW WE DO NOT HAVE.
+    # When approx is set, window_delta handed back the whole match in place of
+    # the trailing window, so the "Last N min" block in the Telegram alert would
+    # be cumulative totals wearing a momentum label. The 0-goals branch already
+    # refused those, but the scored branch's cumulative test (b) did not, so a
+    # favourite that had already scored could alert off a fabricated window.
+    # Alerts are meant to be actionable without re-checking the feed by hand.
+    if approx:
+        ok = False
+        basis += " [BLOCKED: no real 30-min window]"
 
     base_conv = (0.55 * score(vol_r) + 0.30 * score(mom_r)
                  + 0.15 * dom_score(vol_d))

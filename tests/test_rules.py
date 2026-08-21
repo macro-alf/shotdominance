@@ -102,14 +102,32 @@ def test_zero_zero_blocked_by_incomplete_window():
     assert not ev.ok            # incomplete momentum window blocks the 0-0 case
 
 
-def test_scored_case_is_either_or():
-    """With a goal on the board and an incomplete window (momentum branch
-    unavailable), a big cumulative total against the 2x bar still triggers."""
+def test_scored_case_needs_a_real_window_too():
+    """SPEC CHANGE 2026-08-21: no alert may rest on a momentum window that does
+    not exist. This case used to fire - a goal on the board plus a big
+    cumulative total carried it through even with no window at all - but the
+    Telegram alert then printed whole-match totals under a "Last 30 min"
+    heading, inviting a bet on evidence that was never measured."""
     fid, minute = "3", 75
     fav = {"xg": 6.0, "shots": 60, "sot": 18, "box": 30}   # clears even 2x
     opp = {"xg": 0.1, "shots": 1, "sot": 0, "box": 0}
     ev = rules.evaluate({}, fid, minute, fav, opp, fav_goals=1)
-    assert ev.approx            # no history -> momentum branch is off
+    assert ev.approx            # no history -> no window
+    assert not ev.ok
+    assert "BLOCKED" in ev.basis
+
+
+def test_scored_case_is_either_or_when_the_window_is_real():
+    """The either/or structure itself is intact: given a genuine window, weak
+    momentum alone does not fire but a big cumulative total still does."""
+    fid, minute = "3", 75
+    base = rules.Snapshot(45, {"xg": 5.5, "shots": 58, "sot": 17, "box": 29},
+                          {"xg": 0.05, "shots": 0, "sot": 0, "box": 0}, 1)
+    fav = {"xg": 6.0, "shots": 60, "sot": 18, "box": 30}
+    opp = {"xg": 0.1, "shots": 1, "sot": 0, "box": 0}
+    ev = rules.evaluate({fid: [base]}, fid, minute, fav, opp, fav_goals=1)
+    assert not ev.approx
+    assert ev.mom_met < 2       # only a trickle in the last 30 minutes
     assert ev.ok                # ...but the cumulative branch carries it
     assert "cumulative(yes)" in ev.basis
 
