@@ -104,6 +104,14 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   `daily.py` calls `apifootball.set_logger(say)` at startup. Without it a
   failed schedule request left no trace in the daily log and a post-mortem
   had to infer it from the monitor log (2026-08-19).
+- **Pacing errs HIGH by design** (`daily.pace`). Calibrated 2026-08-21 against
+  six days of actuals: `BAND_SHARE` 0.45 -> 0.75, half-time added to the
+  watched span (WATCH_FROM/WATCH_TO are elapsed minutes, polling is
+  wall-clock), plus a 1.15 `SAFETY_MARGIN` for the /status checks and
+  retries. The old model under-budgeted every single day. Under-budgeting
+  picks too fast a poll and spends the allowance early; over-budgeting just
+  polls slightly slower. `tests/test_pacing.py` asserts the estimate covers
+  every observed day — add new days to OBSERVED as they accumulate.
 - **The 7500/day API quota is shared with everything that touches the key** —
   coverage sweeps, manual experiments, earlier supervisor runs. `daily.py` reads
   `/status` at startup and paces against what is actually left, aborting (with a

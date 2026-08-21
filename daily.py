@@ -48,7 +48,23 @@ HARD_STOP_MIN = int(os.getenv("HARD_STOP_MIN", "210"))
 CHECK_EVERY = 300
 DAILY_BUDGET = int(os.getenv("DAILY_BUDGET", "7500"))
 QUOTA_RESERVE = int(os.getenv("QUOTA_RESERVE", "600"))
-BAND_SHARE = float(os.getenv("BAND_SHARE", "0.45"))
+# Fraction of tracked fixtures whose favourite lands inside the odds band and
+# therefore costs a statistics call. CALIBRATED 2026-08-21 against six days of
+# actuals (08-16 excluded - the monitor was blind that day so its usage is not
+# a measurement). The old 0.45 under-budgeted EVERY day: implied values ran
+# 0.55-1.09, and a figure above 1.0 is impossible for a fraction, which is what
+# exposed the second error below.
+BAND_SHARE = float(os.getenv("BAND_SHARE", "0.75"))
+# A fixture is watched over WALL-CLOCK time, but WATCH_FROM/WATCH_TO are ELAPSED
+# match minutes, which omit the half-time break - roughly 15 minutes of extra
+# polling per fixture that the model never counted.
+HALFTIME_MIN = int(os.getenv("HALFTIME_MIN", "15"))
+# Residual the linear model does not capture: the periodic /status quota check,
+# rate-limit retries, and polls that run slightly faster than POLL_SECONDS.
+# Without it the quiet 3-fixture night of 2026-08-18 still came in 11% over its
+# estimate. Applied to the numerator so pace() also picks a slower poll, rather
+# than merely reporting a larger number it then ignores.
+SAFETY_MARGIN = float(os.getenv("SAFETY_MARGIN", "1.15"))
 POLL_MIN, POLL_MAX = 60, 300
 # Minutes after kickoff over which a fixture costs a statistics call. The lower
 # bound IS the engine's recording gate - derive it so the two cannot drift (it
@@ -68,16 +84,20 @@ def pace(pending, start_at, end_est):
     """Choose POLL so the day's requests fit the daily quota.
 
     Cost per poll is 2 fixed calls (/odds/live, /fixtures?live=all) plus one
-    statistics call per fixture currently between minute 30 and full time whose
-    favourite sits inside the pre-match band.
+    statistics call per fixture currently being watched - between WATCH_FROM and
+    full time, favourite inside the pre-match band.
+
+    The estimate must ERR HIGH. Under-budgeting picks too fast a poll interval
+    and spends the day's allowance early, which is how the monitor went blind on
+    2026-08-16; over-budgeting only polls a little slower than it needed to.
 
         requests = (2*span + BAND_SHARE*watched_minutes) / POLL_minutes + N
 
     where N is the one-off pre-match odds lookup each fixture costs.
     """
     span_min = max((end_est - start_at) / 60.0, 60.0)
-    watched_min = len(pending) * (WATCH_TO - WATCH_FROM)
-    numerator = 2.0 * span_min + BAND_SHARE * watched_min
+    watched_min = len(pending) * (WATCH_TO - WATCH_FROM + HALFTIME_MIN)
+    numerator = (2.0 * span_min + BAND_SHARE * watched_min) * SAFETY_MARGIN
     budget = max(DAILY_BUDGET - QUOTA_RESERVE - len(pending), 1)
     need_s = (numerator / budget) * 60.0
     poll = int(min(max(round(need_s / 15.0) * 15, POLL_MIN), POLL_MAX))
