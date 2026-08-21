@@ -88,8 +88,18 @@ def assess(fav, opp, th, dom_ratio=None):
 
 def window_delta(history, fid, minute, fav, opp):
     """Favourite and opponent change over the trailing window. approx=True when
-    there is no snapshot that far back, in which case the whole match is used
-    and the result is EASIER to pass - never treat an approx pass as evidence."""
+    there is no usable snapshot that far back, in which case the whole match is
+    used and the result is EASIER to pass - never treat an approx pass as
+    evidence.
+
+    A MISSING BASELINE IS UNKNOWN, NOT ZERO. This previously read
+    `prev.get(k) or 0`, so a baseline whose stat was None became 0 and the
+    "delta" silently equalled the full cumulative total. On 2026-08-20 the feed
+    published no statistics at all for Sion v Ajax until minute ~34, so the
+    minute-15 baseline was empty and the 45' momentum test was handed the whole
+    match: mom read 3/3 identical to vol 3/3, conviction reached 85, and the
+    signal fired on ONE piece of evidence while reporting two. The `~` flag did
+    not catch it because a snapshot did exist - it was just empty."""
     base = None
     for snap in history.get(fid) or []:
         if snap.minute <= minute - config.WINDOW:
@@ -98,11 +108,16 @@ def window_delta(history, fid, minute, fav, opp):
         return dict(fav), dict(opp), True
 
     def delta(cur, prev):
-        return {k: (None if cur.get(k) is None
-                    else max(0.0, cur[k] - (prev.get(k) or 0)))
+        return {k: (None if cur.get(k) is None or prev.get(k) is None
+                    else max(0.0, cur[k] - prev[k]))
                 for k in config.KEYS}
 
-    return delta(fav, base.fav), delta(opp, base.opp), False
+    dfav, dopp = delta(fav, base.fav), delta(opp, base.opp)
+    # A baseline carrying no usable data is no baseline at all - say so, so the
+    # caller flags it approx rather than treating cumulative as momentum.
+    if all(v is None for v in dfav.values()):
+        return dict(fav), dict(opp), True
+    return dfav, dopp, False
 
 
 def score(ratios):
