@@ -29,7 +29,7 @@ FLOOR, CEIL = 1.75, 4.00
 ROW = re.compile(
     r"^\s+(?P<match>.+?)\s+(?P<min>\d+)'\s+fav=(?P<fav>\S.*?)\s+"
     r"(?P<stats>xg=\S+\s+shots=\S+\s+sot=\S+\s+box=\S+)\s+"
-    r"vol=(?P<vol>\d)/\d\s+mom=(?P<mom>\d)/\d(?P<ap>[~ ])\s*"
+    r"vol=(?P<vol>\d)/\d\s+mom=(?P<mom>\d)/\d(?P<ap>[~ *])\s*"
     r"conv=(?P<conv>\d+)\s+(?:pm=(?P<pm>[0-9.]+)\s+)?odds=(?P<odds>\S+)\s+cp=(?P<cp>\S+)\s*$")
 LEAD = re.compile(r"^\s+(?P<match>.+?)\s+(?P<min>\d+)'\s+fav=(?P<fav>\S.*?)\s+"
                   r"(?P<stats>xg=\S+.*?)\s+cp=(?P<cp>\S+)\s+\(leading\)\s*$")

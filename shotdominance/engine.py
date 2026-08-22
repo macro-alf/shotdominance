@@ -185,13 +185,25 @@ class Monitor:
                   % (ev.s_vol, ev.s_mom, ev.s_dom, time_note),
                   "", "Cumulative (value/bar, opp as % of ours)",
                   "  " + "\n  ".join(ev.vol_det),
-                  "", "Last %d min" % config.WINDOW,
+                  "", Monitor._window_line(ctx, ev),
                   "  " + "\n  ".join(ev.mom_det)]
         for x in ev.extra:
             lines += ["", x]
         lines += ["", "Reply 'bet done' TO THIS MESSAGE to stop repeats and log it.",
                   "Edge is a model assumption, not a measured quantity."]
         return "\n".join(lines)
+
+    @staticmethod
+    def _window_line(ctx, ev):
+        """Header for the momentum block, stating plainly how much real data it
+        rests on. An alert that says "Last 30 min" over a 24-minute sample - or
+        worse, over the whole match - invites a bet on evidence that was never
+        measured."""
+        if ev.win_min >= config.WINDOW:
+            return "Last %d min  (full window, real stats)" % ev.win_min
+        return ("Last %d min  (SHORTENED - feed published no stats before %d'; "
+                "bar scaled to %d min)"
+                % (ev.win_min, ctx["minute"] - ev.win_min, ev.win_min))
 
     # --- stats carry-forward ------------------------------------------------
     @staticmethod
@@ -306,6 +318,15 @@ class Monitor:
                      "quota resets 00:00 UTC."
                      % (left, limit, self.poll_seconds))
 
+    @staticmethod
+    def _win_mark(ev):
+        """Momentum-window marker: '~' none (blocked), '*' shortened but real,
+        ' ' the full window. review.py parses this single character, so the set
+        stays one char wide."""
+        if ev.approx:
+            return "~"
+        return " " if ev.win_min >= config.WINDOW else "*"
+
     def _feed_health(self):
         """Say out loud when the feed dies, and when it comes back.
 
@@ -401,7 +422,7 @@ class Monitor:
         print("   %-38s %2d' fav=%-14s %s vol=%d/%d mom=%d/%d%s conv=%.0f "
               "pm=%.2f odds=%s cp=%s"
               % (label, minute, fav_name, self.brief(fstat, ostat, ev.vol_th),
-                 ev.vol_met, nd, ev.mom_met, nd, "~" if ev.approx else " ", ev.conv,
+                 ev.vol_met, nd, ev.mom_met, nd, self._win_mark(ev), ev.conv,
                  pm, ("%.2f" % price) if price else "n/a", cp), flush=True)
 
         if cp is None or minute > config.CHECKPOINTS[-1] + 5:
@@ -417,7 +438,9 @@ class Monitor:
             why = ["vol %d/%d mom %d/%d [%s]"
                    % (ev.vol_met, nd, ev.mom_met, nd, ev.basis)]
             if ev.approx:
-                why.append("window incomplete")
+                why.append("no momentum window >= %dmin" % config.MIN_WINDOW)
+            elif ev.win_min < config.WINDOW:
+                why.append("momentum window %dmin (feed late)" % ev.win_min)
             if not price_ok:
                 why.append("price %.2f outside %.2f-%.2f"
                            % (price, config.PRICE_FLOOR, config.PRICE_CEIL))

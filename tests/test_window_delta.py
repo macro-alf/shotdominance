@@ -23,7 +23,7 @@ def test_missing_baseline_is_unknown_not_zero():
     """The exact Ajax shape: nothing reported at 15', 13 shots by 45'."""
     hist = {"1": [snap(15, stats()), snap(45, stats(None, 13, 3, 7))]}
     cur = stats(None, 13, 3, 7)
-    dfav, _dopp, approx = rules.window_delta(hist, "1", 45, cur, stats(None, 5, 0, 3))
+    dfav, _dopp, approx, _w = rules.window_delta(hist, "1", 45, cur, stats(None, 5, 0, 3))
     assert approx is True, "an empty baseline must be flagged, not trusted"
     # and it must NOT silently claim 13 shots happened in the last 30 minutes
     # while pretending the window was complete
@@ -34,7 +34,7 @@ def test_partial_baseline_only_zeroes_what_it_knows():
     """shots known at the baseline, sot missing -> one real delta, one unknown."""
     hist = {"1": [snap(15, stats(None, 5, None, 2))]}
     cur = stats(None, 13, 3, 7)
-    dfav, _d, approx = rules.window_delta(hist, "1", 45, cur, stats(None, 4, 1, 2))
+    dfav, _d, approx, _w = rules.window_delta(hist, "1", 45, cur, stats(None, 4, 1, 2))
     assert approx is False
     assert dfav["shots"] == 8          # 13 - 5, a genuine window measurement
     assert dfav["sot"] is None         # unknown at the baseline -> unknown now
@@ -45,7 +45,7 @@ def test_a_real_zero_baseline_is_still_zero():
     """A feed that genuinely reports 0 shots at 15' must keep working - the fix
     must not confuse 'reported zero' with 'not reported'."""
     hist = {"1": [snap(15, stats(0.0, 0, 0, 0))]}
-    dfav, _d, approx = rules.window_delta(hist, "1", 45, stats(1.2, 13, 3, 7),
+    dfav, _d, approx, _w = rules.window_delta(hist, "1", 45, stats(1.2, 13, 3, 7),
                                           stats(0.3, 5, 1, 2))
     assert approx is False
     assert dfav["shots"] == 13 and dfav["sot"] == 3 and dfav["box"] == 7
@@ -96,3 +96,64 @@ def test_the_ajax_situation_is_blocked_end_to_end():
     ev = rules.evaluate(hist, "1", 45, stats(None, 13, 3, 7),
                         stats(None, 5, 0, 3), 0)
     assert ev.ok is False and ev.approx is True
+
+
+# --- variable window (feeds that publish late) ------------------------------
+def late_feed(first_stats_min, upto, final=None):
+    """History for a fixture whose feed reports nothing until first_stats_min,
+    then accumulates linearly to `final` by `upto` - as real counters do."""
+    final = final or stats(0.8, 13, 2, 8)
+    span = max(upto - first_stats_min, 1)
+    out = []
+    for m in range(10, upto + 1):
+        if m < first_stats_min:
+            out.append(snap(m, stats()))
+            continue
+        f = (m - first_stats_min) / span
+        out.append(snap(m, stats(round(final["xg"] * f, 3),
+                                 int(final["shots"] * f),
+                                 int(final["sot"] * f),
+                                 int(final["box"] * f))))
+    return out
+
+
+def test_uses_the_longest_window_the_feed_supports():
+    """Dundalk v Galway 2026-08-21: silent until 26', checkpoint at 50'. The
+    full 30-min window has no baseline, but 24 real minutes do exist."""
+    hist = {"1": late_feed(26, 50)}
+    dfav, _d, approx, win = rules.window_delta(
+        hist, "1", 50, stats(0.8, 13, 2, 8), stats(0.23, 3, 2, 3))
+    assert approx is False
+    assert win == 24, "should measure 50' - 26' = 24 real minutes"
+
+
+def test_window_shorter_than_the_minimum_is_refused():
+    """Feed starts at 35' with a 50' checkpoint -> only 15 minutes, below
+    MIN_WINDOW. Too short a sample is not momentum."""
+    hist = {"1": late_feed(35, 50)}
+    _f, _d, approx, win = rules.window_delta(
+        hist, "1", 50, stats(0.8, 13, 2, 8), stats(0.23, 3, 2, 3))
+    assert approx is True and win == 0
+
+
+def test_a_full_window_is_still_preferred_when_available():
+    hist = {"1": late_feed(10, 50)}
+    _f, _d, approx, win = rules.window_delta(
+        hist, "1", 50, stats(0.8, 13, 2, 8), stats(0.23, 3, 2, 3))
+    assert approx is False and win == config.WINDOW
+
+
+def test_the_bar_scales_with_the_measured_window():
+    """A 20-minute window judged against a 30-minute bar would never pass."""
+    _v30, mom30 = rules.thresholds(50, 30)
+    _v20, mom20 = rules.thresholds(50, 20)
+    assert mom20["shots"] < mom30["shots"]
+    assert abs(mom20["shots"] / mom30["shots"] - 20.0 / 30.0) < 1e-9
+
+
+def test_dundalk_now_fires_on_its_real_24_minute_window():
+    """The checkpoint that was blocked outright on 2026-08-21."""
+    hist = {"1": late_feed(26, 50)}
+    ev = rules.evaluate(hist, "1", 50, stats(0.8, 13, 2, 8),
+                        stats(0.23, 3, 2, 3), 0)
+    assert ev.win_min == 24 and not ev.approx and ev.ok

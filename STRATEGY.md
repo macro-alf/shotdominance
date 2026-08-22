@@ -34,13 +34,24 @@ real result.
   When xG is missing the requirement is **2 of the 3** available metrics.
 - **Signal:** favourite not scored → ≥2 volume **AND** ≥2 momentum. Favourite
   scored & level/behind → ≥2 momentum **OR** ≥2 cumulative vs a (goals+1)× bar.
-- **A REAL 30-min window is required for BOTH branches** (2026-08-21). Without a
-  usable baseline the evaluation is `approx` — the whole match stands in for the
-  window — and nothing fires. Previously only the 0-goals branch refused these,
-  so a favourite that had scored could alert off the cumulative test while the
-  Telegram "Last 30 min" block showed whole-match totals. No alert should invite
-  a bet on evidence that was never measured. Inert in the backtest (reconstructed
-  history always has a baseline), so the Phase 1 result is unchanged.
+- **A REAL momentum window is required for BOTH branches** (2026-08-21). Without
+  a usable baseline the evaluation is `approx` — the whole match stands in for
+  the window — and nothing fires. Previously only the 0-goals branch refused
+  these, so a favourite that had scored could alert off the cumulative test while
+  the Telegram "Last 30 min" block showed whole-match totals.
+- **The window is VARIABLE: longest available, capped at `WINDOW` (30), floored
+  at `MIN_WINDOW` (20)** (2026-08-22). Tier 2 feeds publish stats late — Dundalk
+  v Galway reported nothing until minute 26 — which blocked the 45'–55'
+  checkpoints outright even with 3 of 4 metrics realised. The rule now measures
+  the minutes that DO exist and **scales the momentum bar to match** (a 24-min
+  window is judged against a 24-min bar). Below 20 minutes the sample is too
+  short and nothing fires. The Telegram alert states which it used: `Last 30 min
+  (full window, real stats)` or `Last 24 min (SHORTENED - feed published no stats
+  before 26'; bar scaled to 24 min)`. Console marker after `mom=x/y`: `~` no
+  window, `*` shortened but real, ` ` full (`review.py` parses this character).
+  Both changes are inert in the backtest — reconstructed history always yields a
+  full 30-minute window (verified: 1,680 evaluations, all win=30) — so the
+  Phase 1 result still describes the live rule.
 - **Price:** the signal price (win or DC) must be **1.75–4.00**; if no live price
   the condition is skipped and it still alerts. The last live price is **carried
   forward ≤180s** across blocked/suspended polls. Empty **stats** are likewise

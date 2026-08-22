@@ -31,6 +31,13 @@ MIN_ODDS = _f("MIN_ODDS", 1.30)          # pre-match favourite band, lower
 MAX_ODDS = _f("MAX_ODDS", 2.25)          # pre-match favourite band, upper
 CHECKPOINTS = [45, 50, 55, 60, 65, 70, 75]
 WINDOW = _i("WINDOW", 30)                # trailing momentum window, minutes
+# Shortest window we will still call momentum. Feeds in Tier 2 competitions
+# publish statistics late - Dundalk v Galway (2026-08-21) reported nothing until
+# minute 26 - which left the 45'-55' checkpoints with no baseline at all and
+# blocked them outright. Rather than lose the earliest checkpoints (the ones the
+# time factor deliberately favours), measure the window that IS available and
+# scale its bar to match. Below this the sample is too short to mean anything.
+MIN_WINDOW = _i("MIN_WINDOW", 20)
 NEED = 2                                 # how many of the four metrics must hold
 
 # The momentum window at the first checkpoint (45') needs a snapshot at or before

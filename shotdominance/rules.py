@@ -39,6 +39,7 @@ class Evaluation:
     ok: bool
     basis: str
     approx: bool
+    win_min: int            # minutes the momentum window ACTUALLY covered (0 = none)
     conv: float
     vol_met: int
     mom_met: int
@@ -55,12 +56,17 @@ class Evaluation:
     mom_th: Dict[str, float]
 
 
-def thresholds(minute):
-    """(volume, momentum) threshold dicts at a given minute. Volume scales
-    linearly from the minute-45 baseline; momentum is a constant window bar."""
+def thresholds(minute, window=None):
+    """(volume, momentum) threshold dicts at a given minute.
+
+    Volume scales linearly from the minute-45 baseline. The momentum bar scales
+    with the window ACTUALLY measured, not the nominal one: a 20-minute window
+    must clear a 20-minute bar, or a short window would be judged against a bar
+    built for half as much football again and never pass."""
     scale = minute / 45.0
     vol = {k: config.BASE45[k] * scale for k in config.KEYS}
-    mom = {k: config.BASE45[k] * (config.WINDOW / 45.0) for k in config.KEYS}
+    w = config.WINDOW if window is None else window
+    mom = {k: config.BASE45[k] * (w / 45.0) for k in config.KEYS}
     return vol, mom
 
 
@@ -92,26 +98,39 @@ def assess(fav, opp, th, dom_ratio=None):
     return met, ratios, doms, detail
 
 
-def window_delta(history, fid, minute, fav, opp):
-    """Favourite and opponent change over the trailing window. approx=True when
-    there is no usable snapshot that far back, in which case the whole match is
-    used and the result is EASIER to pass - never treat an approx pass as
-    evidence.
+def _has_data(stat):
+    return any(stat.get(k) is not None for k in config.KEYS)
 
-    A MISSING BASELINE IS UNKNOWN, NOT ZERO. This previously read
-    `prev.get(k) or 0`, so a baseline whose stat was None became 0 and the
-    "delta" silently equalled the full cumulative total. On 2026-08-20 the feed
-    published no statistics at all for Sion v Ajax until minute ~34, so the
-    minute-15 baseline was empty and the 45' momentum test was handed the whole
-    match: mom read 3/3 identical to vol 3/3, conviction reached 85, and the
-    signal fired on ONE piece of evidence while reporting two. The `~` flag did
-    not catch it because a snapshot did exist - it was just empty."""
-    base = None
-    for snap in history.get(fid) or []:
-        if snap.minute <= minute - config.WINDOW:
-            base = snap
-    if base is None:
-        return dict(fav), dict(opp), True
+
+def window_delta(history, fid, minute, fav, opp):
+    """Change over the trailing window. -> (dfav, dopp, approx, win_min).
+
+    Uses the LONGEST window the feed can actually support, capped at WINDOW and
+    floored at MIN_WINDOW, and reports how many minutes that was so the bar can
+    be scaled to it and the alert can say so.
+
+    Why not simply demand WINDOW: Tier 2 feeds publish statistics late. Dundalk
+    v Galway (2026-08-21) reported nothing until minute 26, so a 50' checkpoint
+    had no minute-20 baseline and was blocked outright even though 3 of 4
+    metrics were realised. Measuring the 24 minutes that DID exist, against a
+    24-minute bar, is real evidence; pretending 24 minutes of play is 30 is not,
+    and neither is silently substituting the whole match.
+
+    A MISSING BASELINE IS UNKNOWN, NOT ZERO. This once read `prev.get(k) or 0`,
+    so a None baseline became 0 and the "delta" equalled the full cumulative
+    total - momentum collapsed into a copy of volume and the 0-goals branch
+    fired on one piece of evidence while reporting two (Sion v Ajax, conviction
+    85, 2026-08-20).
+    """
+    snaps = history.get(fid) or []
+    lo, hi = minute - config.WINDOW, minute - config.MIN_WINDOW
+    usable = [s for s in snaps if s.minute <= hi and _has_data(s.fav)]
+    if not usable:
+        return dict(fav), dict(opp), True, 0
+    in_range = [s for s in usable if s.minute >= lo]
+    # earliest inside the band gives the longest window <= WINDOW; failing that
+    # the latest one before the band, which is the closest to a full window.
+    base = in_range[0] if in_range else usable[-1]
 
     def delta(cur, prev):
         return {k: (None if cur.get(k) is None or prev.get(k) is None
@@ -119,11 +138,9 @@ def window_delta(history, fid, minute, fav, opp):
                 for k in config.KEYS}
 
     dfav, dopp = delta(fav, base.fav), delta(opp, base.opp)
-    # A baseline carrying no usable data is no baseline at all - say so, so the
-    # caller flags it approx rather than treating cumulative as momentum.
     if all(v is None for v in dfav.values()):
-        return dict(fav), dict(opp), True
-    return dfav, dopp, False
+        return dict(fav), dict(opp), True, 0
+    return dfav, dopp, False, minute - base.minute
 
 
 def score(ratios):
@@ -172,8 +189,8 @@ def time_factor(minute):
 
 def evaluate(history, fid, minute, fav, opp, fav_goals):
     """The full decision for one checkpoint."""
-    vol_th, mom_th = thresholds(minute)
-    dfav, dopp, approx = window_delta(history, fid, minute, fav, opp)
+    dfav, dopp, approx, win_min = window_delta(history, fid, minute, fav, opp)
+    vol_th, mom_th = thresholds(minute, win_min or config.WINDOW)
     mom_met, _mom_r, _mom_d, mom_det = assess(dfav, dopp, mom_th)
     vol_met, vol_r, vol_d, vol_det = assess(fav, opp, vol_th)
     mom_r = _mom_r
@@ -202,7 +219,7 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
     # Alerts are meant to be actionable without re-checking the feed by hand.
     if approx:
         ok = False
-        basis += " [BLOCKED: no real 30-min window]"
+        basis += " [BLOCKED: no momentum window >= %dmin]" % config.MIN_WINDOW
 
     base_conv = (0.55 * score(vol_r) + 0.30 * score(mom_r)
                  + 0.15 * dom_score(vol_d))
@@ -213,7 +230,7 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
     n_present = sum(1 for k in config.KEYS if fav.get(k) is not None)
     return Evaluation(
         ok=ok, basis=basis, approx=approx, conv=round(conv, 1),
-        vol_met=vol_met, mom_met=mom_met, n_present=n_present,
+        vol_met=vol_met, mom_met=mom_met, n_present=n_present, win_min=win_min,
         vol_det=vol_det, mom_det=mom_det,
         extra=extra, s_vol=round(score(vol_r), 1), s_mom=round(score(mom_r), 1),
         s_dom=round(dom_score(vol_d), 1),
