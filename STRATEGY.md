@@ -106,6 +106,15 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   lives inside `monitor.py` and is therefore useless when the supervisor is what
   died - on 2026-08-17 `daily.py` stopped at 13:49 with no traceback and no
   Telegram, and the evening's fixtures would have gone unwatched.
+- **`watchdog.py` logs every run to `logs/watchdog.log`** and never dies
+  silently (top-level handler logs the traceback, exit 3). On 2026-08-22 it
+  correctly detected a missed 09:45 start, then terminated without
+  restarting anything and without writing a word - the 61-fixture Saturday
+  was saved only because a human ran the health check. Read that log first
+  when the safety net appears not to have fired. Wake timers ARE enabled on
+  this machine, so a missed 09:45 means the PC was off or hibernated, not
+  merely asleep; nothing local can wake it, which is why the watchdog
+  matters.
 - **API-client failures are logged to `logs/daily-*.log`**, not just stdout:
   `daily.py` calls `apifootball.set_logger(say)` at startup. Without it a
   failed schedule request left no trace in the daily log and a post-mortem

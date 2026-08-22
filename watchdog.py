@@ -36,6 +36,7 @@ from shotdominance import telegram
 
 HEARTBEAT = os.path.join("logs", "heartbeat.txt")
 LAST_ACTION = os.path.join("logs", "watchdog-last.txt")
+LOGFILE = os.path.join("logs", "watchdog.log")
 TASK = os.getenv("MONITOR_TASK", "InplayMonitor")
 
 # daily.py beats at least every 10 minutes while waiting and every 5 while
@@ -53,6 +54,22 @@ ACTIVE_FROM = int(os.getenv("WATCHDOG_ACTIVE_FROM", "10"))
 ACTIVE_TO = int(os.getenv("WATCHDOG_ACTIVE_TO", "1"))     # 10:00 -> 01:00 next day
 RESTART_COOLDOWN_MIN = int(os.getenv("WATCHDOG_COOLDOWN_MIN", "60"))
 OK_STATES = ("finished", "aborted")
+
+
+def log(msg):
+    """Every run leaves a trace. A scheduled run that fails silently is a safety
+    net you only discover is missing when you need it: on 2026-08-22 the task
+    detected a missed supervisor start, then terminated without restarting
+    anything and without writing a word, and the whole 61-fixture Saturday was
+    saved only because a human happened to look."""
+    line = "%s %s" % (dt.datetime.now().isoformat(timespec="seconds"), msg)
+    print(line, flush=True)
+    try:
+        os.makedirs("logs", exist_ok=True)
+        with open(LOGFILE, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except Exception:
+        pass
 
 
 def read_heartbeat():
@@ -123,29 +140,50 @@ def main():
         return 0
 
     if not problem:
-        print("watchdog OK - %s" % detail, flush=True)
+        log("OK - %s" % detail)
         return 0
+
+    tg = telegram.Telegram()
+    if not tg.enabled:
+        log("WARNING: telegram not configured in this environment - the alert "
+            "below reaches nobody")
 
     msg = ("SUPERVISOR DOWN - %s (%s). No monitoring until it restarts."
            % (problem, detail))
-    print(msg, flush=True)
+    log(msg)
 
     if recently_acted():
-        telegram.Telegram().send(msg + "\nAlready restarted within the last "
-                                 "%d min - NOT retrying, needs a look."
-                                 % RESTART_COOLDOWN_MIN)
-        return 1
+        log("already acted within %d min - not retrying" % RESTART_COOLDOWN_MIN)
+        tg.send(msg + "\nAlready restarted within the last %d min - NOT "
+                "retrying, needs a look." % RESTART_COOLDOWN_MIN)
+        return 0
 
     mark_acted()
     try:
-        subprocess.check_call(["powershell", "-NoProfile", "-Command",
-                               "Start-ScheduledTask -TaskName '%s'" % TASK])
-        telegram.Telegram().send(msg + "\nRestarted scheduled task '%s'." % TASK)
+        r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                            "Start-ScheduledTask -TaskName '%s'" % TASK],
+                           capture_output=True, text=True, timeout=120)
+        log("restart '%s' rc=%s %s%s" % (TASK, r.returncode,
+                                         (r.stdout or "").strip(),
+                                         (r.stderr or "").strip()))
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or "").strip() or "rc=%s" % r.returncode)
+        tg.send(msg + "\nRestarted scheduled task '%s'." % TASK)
     except Exception as e:
-        telegram.Telegram().send(msg + "\nRestart FAILED: %s - intervene." % e)
+        log("RESTART FAILED: %s" % e)
+        tg.send(msg + "\nRestart FAILED: %s - intervene." % e)
         return 2
-    return 1
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Never die silently - a traceback that nobody sees is the same as no
+    # watchdog at all.
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+        log("CRASHED\n%s" % traceback.format_exc())
+        sys.exit(3)

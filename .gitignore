@@ -21,3 +21,4 @@ venv/
 backtest_cache/
 backtest_rows*.csv
 backtest_features*.csv
+logs/watchdog.log
