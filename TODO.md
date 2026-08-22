@@ -70,6 +70,26 @@ for context. Last updated 2026-08-16.
   check remaining quota first and stop. **Do not run a full coverage sweep on a
   match day.**
 
+- [ ] **FIX: a checkpoint is judged once, on whatever stats happen to exist.**
+  Queued 2026-08-22, to land before the monitor launches. `done.add(cp)` marks a
+  checkpoint spent at the first poll where `minute >= cp`, so a feed that
+  publishes in batches turns each checkpoint into a coin flip on timing.
+
+  **Evidence:** Toulouse 0-0 Lyon, 22 Aug. cp45 judged on `shots=4 xg=0.38` ->
+  vol 0/4, mom 0/4, conv 23, consumed. Seconds later, still minute 45, the feed
+  published `shots=9 xg=1.57 box=7` -> **vol 2/4, mom 2/4, conv 67, price
+  2.50** - clearing every gate. It was the only checkpoint all day that
+  qualified, and it was lost to about a minute of feed latency.
+
+  **Fix:** allow a checkpoint to be re-judged while the clock is still inside
+  its window (`cp <= minute < cp + 5`) rather than consuming it on first sight.
+  Anti-spam does NOT depend on judge-once: `_fire_decision` already requires
+  each alert to beat the fixture's previous conviction high, so re-judging
+  cannot nag. Put it behind a config flag so it is trivially reversible.
+
+  Smaller and safer than the queued "1b" (evaluate every poll). Do this first -
+  it will show whether the full version is even needed.
+
 - [ ] **CHECK MON 24 AUG: is the signal drought real?** Three of the last four
   days produced nothing (08-19, 08-21, 08-22); the last three days ran 2 signals
   from 301 checkpoints (0.7%) against a lifetime 2.7%. Some of that is the

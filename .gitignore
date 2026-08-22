@@ -22,3 +22,4 @@ backtest_cache/
 backtest_rows*.csv
 backtest_features*.csv
 logs/watchdog.log
+logs/reminder.txt
