@@ -90,6 +90,24 @@ for context. Last updated 2026-08-16.
   Smaller and safer than the queued "1b" (evaluate every poll). Do this first -
   it will show whether the full version is even needed.
 
+- [ ] **Should a signal fire when the opponent leads on cumulative xG?**
+  Raised 2026-08-22 from FC Zurich 1-1 Basel (conv 54): Basel realised 0 of 4
+  cumulative metrics and the opponent had MORE xG, 1.12 vs 0.94. It fired on the
+  scored branch via momentum alone, which the rule permits.
+
+  **Already checked - the PATH is fine.** Stratified lift by firing basis over
+  2020-23: `scored: momentum ONLY` n=541, win 49.7%, **lift +7.1pp (z=3.40)**
+  versus `0 goals: volume AND momentum` n=437, win 52.9%, lift +6.1pp (z=2.60).
+  Momentum-only is the largest contributor and carries at least as much real
+  lift; its lower RAW win rate is the price/minute confound, since scored
+  situations are priced longer and occur later. Do not tighten that branch.
+
+  **What is untested** is the narrower question: an explicit guard on the
+  opponent leading cumulative xG. That is a threshold change, so it needs the
+  Phase 1b protocol - and the 2014-19 holdout is SPENT, so it needs fresh
+  seasons (2010-13 via Understat, or wait for 2026-27) before it can be
+  confirmed rather than merely searched.
+
 - [ ] **CHECK MON 24 AUG: is the signal drought real?** Three of the last four
   days produced nothing (08-19, 08-21, 08-22); the last three days ran 2 signals
   from 301 checkpoints (0.7%) against a lifetime 2.7%. Some of that is the
