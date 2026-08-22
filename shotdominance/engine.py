@@ -195,15 +195,21 @@ class Monitor:
 
     @staticmethod
     def _window_line(ctx, ev):
-        """Header for the momentum block, stating plainly how much real data it
-        rests on. An alert that says "Last 30 min" over a 24-minute sample - or
-        worse, over the whole match - invites a bet on evidence that was never
-        measured."""
+        """Header for the momentum block: exactly which minutes it covers.
+
+        "Last 30 min" is not checkable from the message. The span is, and a
+        shortened one has to announce itself - an alert that quietly measured 22
+        minutes while looking like 30 is the same failure as one that measured
+        the whole match (Sion v Ajax, 2026-08-20).
+        """
+        now = ctx["minute"]
+        frm = now - ev.win_min
         if ev.win_min >= config.WINDOW:
-            return "Last %d min  (full window, real stats)" % ev.win_min
-        return ("Last %d min  (SHORTENED - feed published no stats before %d'; "
-                "bar scaled to %d min)"
-                % (ev.win_min, ctx["minute"] - ev.win_min, ev.win_min))
+            return ("Momentum window: %d' -> %d'  (%d min, full - real stats)"
+                    % (frm, now, ev.win_min))
+        return ("Momentum window: %d' -> %d'  (%d min, SHORTENED - no stats "
+                "available before %d'; bar scaled to %d min)"
+                % (frm, now, ev.win_min, frm, ev.win_min))
 
     # --- stats carry-forward ------------------------------------------------
     @staticmethod

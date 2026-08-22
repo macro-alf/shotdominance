@@ -157,3 +157,35 @@ def test_dundalk_now_fires_on_its_real_24_minute_window():
     ev = rules.evaluate(hist, "1", 50, stats(0.8, 13, 2, 8),
                         stats(0.23, 3, 2, 3), 0)
     assert ev.win_min == 24 and not ev.approx and ev.ok
+
+
+# --- the window is ALWAYS the last WINDOW minutes ---------------------------
+def test_window_never_exceeds_the_nominal_length():
+    """A baseline older than WINDOW would measure more than 30 minutes of
+    football and call it momentum. Sparse history must not sneak one in."""
+    hist = {"x": [snap(10, stats(0.1, 2, 1, 1)), snap(50, stats(0.9, 14, 4, 9))]}
+    _d, _o, approx, win = rules.window_delta(
+        hist, "x", 50, stats(0.9, 14, 4, 9), stats(0.2, 3, 1, 2))
+    assert win <= config.WINDOW
+    assert approx is True and win == 0, "40 minutes back is not a 30-min window"
+
+
+def test_full_window_preferred_over_a_shorter_one_that_also_fits():
+    """Baselines at both 20' and 25' for a 50' checkpoint -> take 20' (30 min)."""
+    hist = {"x": [snap(20, stats(0.1, 2, 1, 1)), snap(25, stats(0.2, 4, 1, 2)),
+                  snap(50, stats(0.9, 14, 4, 9))]}
+    _d, _o, approx, win = rules.window_delta(
+        hist, "x", 50, stats(0.9, 14, 4, 9), stats(0.2, 3, 1, 2))
+    assert not approx and win == config.WINDOW
+
+
+def test_window_stays_inside_the_band_for_every_checkpoint():
+    """Property check across a late feed and all checkpoints."""
+    for first in (10, 20, 26, 31, 38):
+        hist = {"x": late_feed(first, 75)}
+        for cp in config.CHECKPOINTS:
+            h = {"x": [s for s in hist["x"] if s.minute <= cp]}
+            _d, _o, approx, win = rules.window_delta(
+                h, "x", cp, stats(0.9, 14, 4, 9), stats(0.2, 3, 1, 2))
+            assert approx or config.MIN_WINDOW <= win <= config.WINDOW, (
+                "first=%d cp=%d gave win=%d" % (first, cp, win))

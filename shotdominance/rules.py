@@ -123,14 +123,18 @@ def window_delta(history, fid, minute, fav, opp):
     85, 2026-08-20).
     """
     snaps = history.get(fid) or []
+    # The window is ALWAYS the last WINDOW minutes from now. A baseline older
+    # than that would measure more than 30 minutes of football and call it
+    # momentum, so the band is closed at both ends: never longer than WINDOW,
+    # never shorter than MIN_WINDOW.
     lo, hi = minute - config.WINDOW, minute - config.MIN_WINDOW
-    usable = [s for s in snaps if s.minute <= hi and _has_data(s.fav)]
-    if not usable:
+    in_band = [s for s in snaps
+               if lo <= s.minute <= hi and _has_data(s.fav)]
+    if not in_band:
         return dict(fav), dict(opp), True, 0
-    in_range = [s for s in usable if s.minute >= lo]
-    # earliest inside the band gives the longest window <= WINDOW; failing that
-    # the latest one before the band, which is the closest to a full window.
-    base = in_range[0] if in_range else usable[-1]
+    # Earliest inside the band = the longest window available, so a full 30 is
+    # used whenever the feed supports it and a shorter one only when it does not.
+    base = in_band[0]
 
     def delta(cur, prev):
         return {k: (None if cur.get(k) is None or prev.get(k) is None

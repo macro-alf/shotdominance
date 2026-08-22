@@ -45,9 +45,14 @@ real result.
   checkpoints outright even with 3 of 4 metrics realised. The rule now measures
   the minutes that DO exist and **scales the momentum bar to match** (a 24-min
   window is judged against a 24-min bar). Below 20 minutes the sample is too
-  short and nothing fires. The Telegram alert states which it used: `Last 30 min
-  (full window, real stats)` or `Last 24 min (SHORTENED - feed published no stats
-  before 26'; bar scaled to 24 min)`. Console marker after `mom=x/y`: `~` no
+  short and nothing fires. The window is **closed at both ends** — never longer
+  than 30 (a baseline further back would measure more football and call it
+  momentum) and never shorter than 20 — and the longest one available is always
+  taken, so 30 is the standard and anything less happens only when the feed was
+  blank. The Telegram alert names the exact span:
+  `Momentum window: 20' -> 50'  (30 min, full - real stats)` or
+  `Momentum window: 26' -> 50'  (24 min, SHORTENED - no stats available before
+  26'; bar scaled to 24 min)`. Console marker after `mom=x/y`: `~` no
   window, `*` shortened but real, ` ` full (`review.py` parses this character).
   Both changes are inert in the backtest — reconstructed history always yields a
   full 30-minute window (verified: 1,680 evaluations, all win=30) — so the
