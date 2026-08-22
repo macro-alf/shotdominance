@@ -70,6 +70,21 @@ for context. Last updated 2026-08-16.
   check remaining quota first and stop. **Do not run a full coverage sweep on a
   match day.**
 
+- [ ] **CHECK MON 24 AUG: is the signal drought real?** Three of the last four
+  days produced nothing (08-19, 08-21, 08-22); the last three days ran 2 signals
+  from 301 checkpoints (0.7%) against a lifetime 2.7%. Some of that is the
+  2026-08-21/22 tightening correctly removing fake-momentum signals, some is
+  quiet football, and with n=15 lifetime signals the two cannot yet be
+  separated. `python signalcheck.py --print` prints the per-day table; a one-shot
+  task `InplaySignalCheck` Telegrams it on Mon 24 Aug and self-deletes.
+
+  **If still dry, diagnose before touching anything.** Split blocked checkpoints
+  into (a) feed lateness - no usable momentum baseline - versus (b) genuinely
+  failing the metric bars. If (a) dominates the fix is data-side (poll stats
+  earlier, carry longer, revisit MIN_WINDOW); if (b) dominates it is the
+  thresholds, and those must NOT be loosened on a handful of days - see the
+  Phase 1b protocol above and the placebo overfit that preceded it.
+
 ## Medium
 
 - [ ] **"1b" — evaluate every poll once eligible, not only at 5-min checkpoints.**
