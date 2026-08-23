@@ -58,15 +58,36 @@ class Evaluation:
     mom_th: Dict[str, float]
 
 
-def thresholds(minute, window=None):
+def vol_scale(minute):
+    """Growth of the absolute volume bar with the clock.
+
+    Anchored at 1.0 on the 45' checkpoint, then growing at VOL_SCALE_RATE of the
+    old pace. The bar used to track minute/45 all the way, reaching 17.3 shots
+    by 78'; a side can outplay its opponent comprehensively and still sit under
+    a bar built for a higher-tempo match (Manchester City 0-1 Bournemouth,
+    2026-08-23: dominant on 3 of 4 metrics, clearing the bar on 1).
+    """
+    if minute <= 45:
+        return minute / 45.0
+    return 1.0 + config.VOL_SCALE_RATE * (minute - 45.0) / 45.0
+
+
+def thresholds(minute, window=None, fav_goals=0):
     """(volume, momentum) threshold dicts at a given minute.
 
-    Volume scales linearly from the minute-45 baseline. The momentum bar scales
-    with the window ACTUALLY measured, not the nominal one: a 20-minute window
-    must clear a 20-minute bar, or a short window would be judged against a bar
-    built for half as much football again and never pass."""
-    scale = minute / 45.0
-    vol = {k: config.BASE45[k] * scale for k in config.KEYS}
+    THE VOLUME BAR IS WHAT THE NEXT GOAL COSTS. A favourite that has already
+    scored needs ANOTHER one to change the result, so its bar is multiplied by
+    (fav_goals + 1): at 1-1 the question is not "has it done enough to score"
+    but "has it done enough to score twice". The half-speed clock scaling then
+    applies on top of that doubled base.
+
+    The momentum bar is deliberately NOT multiplied - momentum asks whether the
+    side is on top RIGHT NOW, which does not change because it scored earlier.
+    It scales with the window ACTUALLY measured, since a 20-minute window judged
+    against a 30-minute bar would never pass.
+    """
+    mult = fav_goals + 1
+    vol = {k: config.BASE45[k] * mult * vol_scale(minute) for k in config.KEYS}
     w = config.WINDOW if window is None else window
     mom = {k: config.BASE45[k] * (w / 45.0) for k in config.KEYS}
     return vol, mom
@@ -201,7 +222,7 @@ def time_factor(minute):
 def evaluate(history, fid, minute, fav, opp, fav_goals):
     """The full decision for one checkpoint."""
     dfav, dopp, approx, win_min = window_delta(history, fid, minute, fav, opp)
-    vol_th, mom_th = thresholds(minute, win_min or config.WINDOW)
+    vol_th, mom_th = thresholds(minute, win_min or config.WINDOW, fav_goals)
     mom_met, _mom_r, _mom_d, mom_det = assess(dfav, dopp, mom_th)
     vol_met, vol_r, vol_d, vol_det = assess(fav, opp, vol_th)
     mom_r = _mom_r
@@ -211,15 +232,15 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
         ok = (vol_met >= config.NEED and mom_met >= config.NEED and not approx)
         basis = "0 goals: volume AND momentum"
     else:
-        mult = fav_goals + 1
-        hard_th = {k: vol_th[k] * mult for k in config.KEYS}
-        hard_met, _hr, _hd, hard_det = assess(fav, opp, hard_th)
+        # vol_th already carries the (fav_goals + 1) multiplier, so the volume
+        # test IS the "enough for another goal" test - no second, separately
+        # doubled bar is needed.
         a = mom_met >= config.NEED and not approx
-        b = hard_met >= config.NEED
+        b = vol_met >= config.NEED
         ok = a or b
         basis = ("scored %d: momentum(%s) OR %dx cumulative(%s)"
-                 % (fav_goals, "yes" if a else "no", mult, "yes" if b else "no"))
-        extra = ["%dx bar: %s" % (mult, "  ".join(hard_det))]
+                 % (fav_goals, "yes" if a else "no", fav_goals + 1,
+                    "yes" if b else "no"))
 
     # CLEAR DOMINANCE. An alert claims the favourite is dominating but not
     # winning, so it must not fire while the opponent is out-performing it on

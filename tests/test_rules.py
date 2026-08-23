@@ -64,10 +64,14 @@ def test_dom_score_extremes():
 
 # --- thresholds -------------------------------------------------------------
 def test_volume_scales_momentum_constant():
+    """SPEC CHANGE 2026-08-23: the volume bar still anchors at BASE45 on the 45'
+    checkpoint, but grows at VOL_SCALE_RATE of its old pace afterwards."""
     vol45, mom45 = rules.thresholds(45)
     vol75, mom75 = rules.thresholds(75)
     assert vol45["shots"] == 10.0
-    assert vol75["shots"] == 10.0 * 75 / 45
+    expected75 = 10.0 * (1.0 + config.VOL_SCALE_RATE * (75 - 45) / 45.0)
+    assert abs(vol75["shots"] - expected75) < 1e-9
+    assert vol75["shots"] < 10.0 * 75 / 45          # lower than the old bar
     # momentum is a constant window bar regardless of minute
     assert mom45 == mom75
     assert abs(mom45["shots"] - 10.0 * config.WINDOW / 45) < 1e-9

@@ -64,7 +64,7 @@ def rows_for(fx, shots, season, league):
         if fired:
             best = ev.conv
 
-        vol_th, _mom_th = rules.thresholds(cp)
+        vol_th, _mom_th = rules.thresholds(cp, fav_goals=fav_g)
         r = {"match_id": fx["match_id"], "season": season, "league": league,
              "date": fx["date"], "minute": cp, "state": state,
              "fav_price": fav_price, "fav_goals": fav_g, "opp_goals": opp_g,

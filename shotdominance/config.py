@@ -73,6 +73,15 @@ NO_OPP_LEAD = _i("NO_OPP_LEAD", 1)
 RECORD_LEAD = _i("RECORD_LEAD", 5)
 KEYS = ("xg", "shots", "sot", "box")
 
+# How fast the absolute volume bar grows AFTER minute 45. The bar is anchored at
+# BASE45 at the 45' checkpoint and used to grow at minute/45, reaching 17.3
+# shots by 78' - Manchester City 0-1 Bournemouth (2026-08-23) was dominant on 3
+# of 4 metrics (xG 1.55 v 0.55, shots 10 v 4) yet cleared the absolute bar on
+# only one, because 10 shots is a lot of football and still under a bar built
+# for a higher-tempo match. Halving the growth keeps the 45' anchor but makes
+# the later checkpoints reachable. 1.0 restores the old behaviour.
+VOL_SCALE_RATE = _f("VOL_SCALE_RATE", 0.5)
+
 # baseline thresholds AT minute 45; volume scales * t/45, momentum * WINDOW/45
 BASE45 = {"xg": 0.70, "shots": 10.0, "sot": 3.0, "box": 5.0}
 

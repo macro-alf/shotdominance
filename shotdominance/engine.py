@@ -408,8 +408,8 @@ class Monitor:
             print("   %-38s %2d' fav=%-14s %s  cp=%s (leading)"
                   % (label, minute, fav_name,
                      self.brief(fstat, ostat,
-                                {k: config.BASE45[k] * minute / 45.0
-                                 for k in config.KEYS}), cp), flush=True)
+                                rules.thresholds(minute, fav_goals=fav_goals)[0]),
+                     cp), flush=True)
             return
 
         ev = rules.evaluate(self.history, fid, minute, fstat, ostat, fav_goals)

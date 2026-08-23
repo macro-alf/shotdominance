@@ -37,8 +37,17 @@ real result.
   Basel fired with 0 of 4 cumulative realised and the opponent ahead on xG
   (1.12 vs 0.94) — momentum alone carried it through the scored branch.
 - **Metrics (4):** xg, shots, sot, box. Baseline at 45': xG 0.70 / shots 10 /
-  sot 3 / box 5. Volume threshold scales ×(minute/45); momentum is a constant
-  30-min-window bar at ×(30/45).
+  sot 3 / box 5.
+- **Volume bar** (2026-08-23): anchored at BASE45 on the 45' checkpoint, then
+  growing at `VOL_SCALE_RATE` (0.5) of its old pace — 13.7 shots at 78' rather
+  than 17.3. Man City 0-1 Bournemouth was dominant on 3 of 4 metrics (xG 1.55
+  v 0.55, shots 10 v 4) and cleared the old bar on **one**.
+- **The bar is what the NEXT goal costs.** A favourite that has already scored
+  is judged against ×(fav_goals+1) on **every** metric: 1-1 → ×2, 2-2 → ×3,
+  3-3 → ×4. This replaced the separate "(goals+1)× cumulative" branch, which
+  became the volume test itself. Momentum is deliberately NOT multiplied —
+  it asks whether the side is on top now, which a goal half an hour ago does
+  not change.
 - **Recording** starts at minute **10** (`CHECKPOINTS[0] − WINDOW − RECORD_LEAD`).
   The 5-min lead-in exists because polls skip minutes, so recording from exactly
   15 landed the first snapshot at 16' — leaving the 45' window with no base,
