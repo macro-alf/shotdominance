@@ -21,8 +21,21 @@ real result.
 - **Watchlist:** 24 competitions (`config.LEAGUES`, all pinned to feed ids).
   Tier 1 = 100% xG + core shot stats; Tier 2 = 100% core, intermittent xG. See
   `logs/league_coverage.csv`.
-- **Gates:** competition in list · pre-match favourite decimal **1.30–2.25** ·
-  favourite not winning · checkpoints **45,50,…,75** (each judged once).
+- **Gates:** competition in list · pre-match favourite decimal **1.30–3.00** ·
+  favourite not winning · checkpoints **45,50,…,75**. Band widened from 2.25 on
+  2026-08-23: a side quoted 2.99 that is dominating in play is still the thesis.
+- **Checkpoints stay OPEN for `CHECKPOINT_GRACE` (4) minutes**, re-judged each
+  poll until they fire or the window closes. They used to be spent on the first
+  poll that reached them, on whatever stats existed at that instant — Toulouse
+  0-0 Lyon (2026-08-22) was judged at 45' on shots=4/conv 23 and seconds later
+  showed shots=9/conv 67, a clean signal already discarded. Safe because
+  `_fire_decision` still requires each alert to beat the fixture's conviction
+  high, and a checkpoint that fires is spent immediately.
+- **CLEAR DOMINANCE required to fire** (2026-08-23): at least `CUM_DOM_MIN` (1)
+  cumulative metric must be dominant (opponent ≤ `DOM_RATIO` of ours), and with
+  `NO_OPP_LEAD` the opponent must not lead on ANY present metric. FC Zurich 1-1
+  Basel fired with 0 of 4 cumulative realised and the opponent ahead on xG
+  (1.12 vs 0.94) — momentum alone carried it through the scored branch.
 - **Metrics (4):** xg, shots, sot, box. Baseline at 45': xG 0.70 / shots 10 /
   sot 3 / box 5. Volume threshold scales ×(minute/45); momentum is a constant
   30-min-window bar at ×(30/45).

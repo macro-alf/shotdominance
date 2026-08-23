@@ -433,7 +433,17 @@ class Monitor:
 
         if cp is None or minute > config.CHECKPOINTS[-1] + 5:
             return
-        done.add(cp)
+        # Do NOT spend the checkpoint on the first poll that reaches it. Feeds
+        # publish in batches, so the first poll after cp often carries stale
+        # numbers: Toulouse 0-0 Lyon (2026-08-22) was judged at 45' on shots=4,
+        # conviction 23, and seconds later showed shots=9, xg=1.57, conviction
+        # 67 - a clean signal already thrown away. The checkpoint stays open,
+        # re-judged each poll, until it fires or its grace window closes.
+        # _fire_decision still blocks any repeat that fails to beat the
+        # fixture's conviction high, so this cannot nag.
+        expired = minute >= cp + config.CHECKPOINT_GRACE
+        if expired:
+            done.add(cp)
 
         price_ok = price is None or (config.PRICE_FLOOR <= price <= config.PRICE_CEIL)
         if fid in self.acked:
@@ -450,7 +460,9 @@ class Monitor:
             if not price_ok:
                 why.append("price %.2f outside %.2f-%.2f"
                            % (price, config.PRICE_FLOOR, config.PRICE_CEIL))
-            print("       cp%d no signal: %s" % (cp, "; ".join(why)), flush=True)
+            print("       cp%d %s: %s"
+                  % (cp, "no signal" if expired else "not yet (window open)",
+                     "; ".join(why)), flush=True)
             return
 
         # conviction gate: must clear the floor to fire at all, and only re-fire
@@ -459,6 +471,7 @@ class Monitor:
         if not fire:
             print("       cp%d %s" % (cp, reason), flush=True)
             return
+        done.add(cp)          # fired - spend it, even if grace had time left
 
         open_total = sum(self.open_pos.values())
         sz = (sizing.size(price, ev.conv, open_total) if price

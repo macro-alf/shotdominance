@@ -300,3 +300,46 @@ def test_quota_guard_does_not_check_every_poll():
     mon = engine.Monitor(api, StubTg(), {1})
     _run(mon, config.QUOTA_CHECK_POLLS - 1)
     assert mon.polls == config.QUOTA_CHECK_POLLS - 1
+
+
+# --- checkpoint grace (the Toulouse miss) -----------------------------------
+class LateFeedApi(CarryStubApi):
+    """A feed that publishes its statistics one poll AFTER the checkpoint."""
+    def __init__(self):
+        super().__init__()
+        self.rich = False
+
+    def get(self, path, **p):
+        if path == "/fixtures/statistics" and not self.rich:
+            def team(tid, xg, sh, sot, box):
+                return {"team": {"id": tid}, "statistics": [
+                    {"type": "Expected Goals", "value": xg},
+                    {"type": "Total Shots", "value": sh},
+                    {"type": "Shots on Goal", "value": sot},
+                    {"type": "Shots insidebox", "value": box}]}
+            return [team(1, "0.38", 4, 0, 2), team(2, "0.02", 1, 0, 0)]
+        return super().get(path, **p)
+
+
+def test_checkpoint_is_not_spent_on_the_first_poll():
+    """Toulouse 0-0 Lyon, 2026-08-22: cp45 was judged on shots=4 / conv 23 and
+    consumed; the real numbers arrived seconds later. The checkpoint must stay
+    open long enough to see them."""
+    api = LateFeedApi()
+    mon = engine.Monitor(api, StubTg(), {1})
+    api.minute = config.CHECKPOINTS[0]
+    with contextlib.redirect_stdout(io.StringIO()):
+        mon.poll()                              # stale stats at the checkpoint
+    assert config.CHECKPOINTS[0] not in mon.done["7"], \
+        "checkpoint was spent on the first poll"
+
+
+def test_checkpoint_closes_once_its_grace_expires():
+    api = LateFeedApi()
+    mon = engine.Monitor(api, StubTg(), {1})
+    with contextlib.redirect_stdout(io.StringIO()):
+        api.minute = config.CHECKPOINTS[0]
+        mon.poll()
+        api.minute = config.CHECKPOINTS[0] + config.CHECKPOINT_GRACE
+        mon.poll()
+    assert config.CHECKPOINTS[0] in mon.done["7"]

@@ -28,8 +28,20 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # --- eligibility gates ------------------------------------------------------
 MIN_ODDS = _f("MIN_ODDS", 1.30)          # pre-match favourite band, lower
-MAX_ODDS = _f("MAX_ODDS", 2.25)          # pre-match favourite band, upper
+MAX_ODDS = _f("MAX_ODDS", 3.00)          # pre-match favourite band, upper
+# Widened 2.25 -> 3.00 on 2026-08-23 at Alf's instruction: a side quoted
+# 2.99 pre-match that is dominating in play is still the thesis. Note this
+# admits weaker favourites, so the volume bars bite harder on them.
 CHECKPOINTS = [45, 50, 55, 60, 65, 70, 75]
+# A checkpoint used to be spent on the FIRST poll that reached it, on whatever
+# statistics existed at that instant. Feeds publish in batches: Toulouse 0-0
+# Lyon (2026-08-22) was judged at 45' on shots=4 / conv 23, and seconds later
+# the feed showed shots=9, xg=1.57, conv 67 - a clean signal, already thrown
+# away. A checkpoint now stays open for this many minutes, re-judged each poll
+# until it fires or the window closes. Anti-spam does not depend on judging
+# once: _fire_decision already requires each alert to beat the fixture's
+# conviction high.
+CHECKPOINT_GRACE = _i("CHECKPOINT_GRACE", 4)
 WINDOW = _i("WINDOW", 30)                # trailing momentum window, minutes
 # Shortest window we will still call momentum. Feeds in Tier 2 competitions
 # publish statistics late - Dundalk v Galway (2026-08-21) reported nothing until
@@ -39,6 +51,17 @@ WINDOW = _i("WINDOW", 30)                # trailing momentum window, minutes
 # scale its bar to match. Below this the sample is too short to mean anything.
 MIN_WINDOW = _i("MIN_WINDOW", 20)
 NEED = 2                                 # how many of the four metrics must hold
+
+# CLEAR DOMINANCE GATE (2026-08-23). FC Zurich 1-1 Basel fired with the
+# favourite realising 0 of 4 cumulative metrics while the OPPONENT led on xG
+# (1.12 vs 0.94) - momentum alone carried it through the scored branch. An alert
+# is supposed to mean "this side is dominating but not winning", so no signal
+# may fire while the opponent is out-performing the favourite on the run of
+# play. CUM_DOM_MIN cumulative metrics must be DOMINANT (opponent <= DOM_RATIO
+# of ours), whether or not they clear the absolute bar.
+CUM_DOM_MIN = _i("CUM_DOM_MIN", 1)
+# ...and the opponent must not lead the favourite on any metric that is present.
+NO_OPP_LEAD = _i("NO_OPP_LEAD", 1)
 
 # The momentum window at the first checkpoint (45') needs a snapshot at or before
 # minute 15. Recording from exactly minute 15 means the first snapshot usually

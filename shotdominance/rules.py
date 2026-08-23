@@ -40,6 +40,8 @@ class Evaluation:
     basis: str
     approx: bool
     win_min: int            # minutes the momentum window ACTUALLY covered (0 = none)
+    cum_dom: int            # cumulative metrics where we dominate (opp <= DOM_RATIO)
+    opp_leads: int          # metrics where the OPPONENT is ahead of us
     conv: float
     vol_met: int
     mom_met: int
@@ -96,6 +98,11 @@ def assess(fav, opp, th, dom_ratio=None):
                          "" if dom_ok else (" (opp unknown)" if dom is None
                                             else " (not dominant)")))
     return met, ratios, doms, detail
+
+
+def n_dom_present(doms):
+    """How many metrics have a usable opponent share at all."""
+    return sum(1 for v in doms.values() if v is not None)
 
 
 def _has_data(stat):
@@ -214,6 +221,23 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
                  % (fav_goals, "yes" if a else "no", mult, "yes" if b else "no"))
         extra = ["%dx bar: %s" % (mult, "  ".join(hard_det))]
 
+    # CLEAR DOMINANCE. An alert claims the favourite is dominating but not
+    # winning, so it must not fire while the opponent is out-performing it on
+    # the run of play. FC Zurich 1-1 Basel (2026-08-23) realised 0 of 4
+    # cumulative metrics with the opponent ahead on xG and still fired, because
+    # the scored branch accepts momentum on its own.
+    cum_dom = sum(1 for k in config.KEYS
+                  if vol_d.get(k) is not None and vol_d[k] <= config.DOM_RATIO)
+    opp_leads = sum(1 for k in config.KEYS
+                    if vol_d.get(k) is not None and vol_d[k] > 1.0)
+    if ok and cum_dom < config.CUM_DOM_MIN:
+        ok = False
+        basis += " [BLOCKED: dominant on %d/%d cumulative, need %d]" % (
+            cum_dom, n_dom_present(vol_d), config.CUM_DOM_MIN)
+    elif ok and config.NO_OPP_LEAD and opp_leads:
+        ok = False
+        basis += " [BLOCKED: opponent leads on %d metric(s)]" % opp_leads
+
     # NO ALERT MAY REST ON - OR DISPLAY - A MOMENTUM WINDOW WE DO NOT HAVE.
     # When approx is set, window_delta handed back the whole match in place of
     # the trailing window, so the "Last N min" block in the Telegram alert would
@@ -235,6 +259,7 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
     return Evaluation(
         ok=ok, basis=basis, approx=approx, conv=round(conv, 1),
         vol_met=vol_met, mom_met=mom_met, n_present=n_present, win_min=win_min,
+        cum_dom=cum_dom, opp_leads=opp_leads,
         vol_det=vol_det, mom_det=mom_det,
         extra=extra, s_vol=round(score(vol_r), 1), s_mom=round(score(mom_r), 1),
         s_dom=round(dom_score(vol_d), 1),
