@@ -108,6 +108,39 @@ for context. Last updated 2026-08-16.
   seasons (2010-13 via Understat, or wait for 2026-27) before it can be
   confirmed rather than merely searched.
 
+- [ ] **IF LIVE STATS STAY POOR, PRICE UP ANOTHER PROVIDER.** Raised 2026-08-23.
+  The binding constraint has shifted from the rule to the data. `signalcheck.py`
+  now measures the number that decides it: **the minute at which shot statistics
+  first appear per fixture**, and the share of fixtures whose stats start after
+  minute 25 (which makes their 45' checkpoint unjudgeable - no baseline exists).
+
+      day        stats-from   fixtures losing the 45' checkpoint
+      08-14..19    10'-15'      0-28%
+      08-20        46'          96%
+      08-21        26'          50%
+      08-22        22'          38%
+
+  Currently **42% overall**. No rule change recovers a checkpoint with no data
+  behind it, and 45'-50' is where the time factor gives its largest boost.
+
+  **Before paying anyone**, check whether this is API-Football's ingest latency
+  or something plan-related - a higher tier probably will NOT fix a sourcing
+  delay, and asking their support costs nothing. Also check whether it is
+  competition-specific: West Brom (Championship) had stats from 12' on the same
+  day two continental fixtures had none until 45'/47'. If it is concentrated,
+  trimming the watchlist to competitions with proven early coverage is far
+  cheaper than switching provider (see `logs/league_coverage.csv`).
+
+  **Candidates to evaluate** (latency unverified - do not assume any is better):
+  Sportmonks, SportRadar, Stats Perform/Opta (both enterprise-priced), and the
+  unofficial SofaScore/FotMob feeds (fast but no ToS cover - not suitable for
+  something that sizes real money).
+
+  **The test is already built.** Point a trial key at a day of fixtures, log the
+  same rows, and run `python signalcheck.py --print`. Target: stats from <=15'
+  for >=80% of fixtures. Do NOT run an evaluation sweep on a match day - it
+  shares the 7500/day quota with the live monitor.
+
 - [ ] **CHECK MON 24 AUG: is the signal drought real?** Three of the last four
   days produced nothing (08-19, 08-21, 08-22); the last three days ran 2 signals
   from 301 checkpoints (0.7%) against a lifetime 2.7%. Some of that is the
