@@ -59,12 +59,12 @@ def rows_for(fx, shots, season, league):
         hist = reconstruct.history_to(series, goals, fav_side, cp)
         f_now, o_now = series[fav_side][cp], series[opp_side][cp]
         ev = rules.evaluate({fx["match_id"]: hist}, fx["match_id"], cp,
-                            f_now, o_now, fav_g)
+                            f_now, o_now, fav_g, opp_g)
         fired = bool(ev.ok and ev.conv >= config.CONV_FIRE_MIN and ev.conv > best)
         if fired:
             best = ev.conv
 
-        vol_th, _mom_th = rules.thresholds(cp, fav_goals=fav_g)
+        vol_th, _mom_th = rules.thresholds(cp, fav_goals=fav_g, opp_goals=opp_g)
         r = {"match_id": fx["match_id"], "season": season, "league": league,
              "date": fx["date"], "minute": cp, "state": state,
              "fav_price": fav_price, "fav_goals": fav_g, "opp_goals": opp_g,

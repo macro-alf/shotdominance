@@ -42,12 +42,20 @@ real result.
   growing at `VOL_SCALE_RATE` (0.5) of its old pace — 13.7 shots at 78' rather
   than 17.3. Man City 0-1 Bournemouth was dominant on 3 of 4 metrics (xG 1.55
   v 0.55, shots 10 v 4) and cleared the old bar on **one**.
-- **The bar is what the NEXT goal costs.** A favourite that has already scored
-  is judged against ×(fav_goals+1) on **every** metric: 1-1 → ×2, 2-2 → ×3,
-  3-3 → ×4. This replaced the separate "(goals+1)× cumulative" branch, which
-  became the volume test itself. Momentum is deliberately NOT multiplied —
-  it asks whether the side is on top now, which a goal half an hour ago does
-  not change.
+- **The bar is what the BET costs, in goals** (`goals_needed`, revised
+  2026-08-24). Multiplied on **every** metric by the total the favourite must
+  end up having scored: level 1-1 → ×2, 2-2 → ×3; behind 0-1 → ×1 but **0-2 →
+  ×2** and 0-3 → ×3, because the double chance only cashes on a draw. Rennes
+  2-0 PSG fired with the bar at ×1 while the X2 bet needed two goals — half the
+  evidence the bet required. Momentum is deliberately NOT multiplied: it asks
+  whether the side is on top now, which a goal half an hour ago does not change.
+- **One side of the evidence must be STRONG** (`STRONG_NEED=3`, 2026-08-24). The
+  better of volume/momentum must reach 3 of 4 and the other must still reach
+  `NEED` (2); with xG missing only three metrics exist, so it falls back to 2 of
+  3 on both. Torino 0-0 Milan fired on 2/4 and 2/4 — the bare minimum twice over
+  — and Hellas Verona on momentum alone with cumulative at 1/4. This converts the
+  scored branch from *either/or* into *both, one strong*, which is a real cut in
+  volume: that branch was 541 of 994 Phase 1 signals.
 - **Recording** starts at minute **10** (`CHECKPOINTS[0] − WINDOW − RECORD_LEAD`).
   The 5-min lead-in exists because polls skip minutes, so recording from exactly
   15 landed the first snapshot at 16' — leaving the 45' window with no base,

@@ -72,21 +72,37 @@ def vol_scale(minute):
     return 1.0 + config.VOL_SCALE_RATE * (minute - 45.0) / 45.0
 
 
-def thresholds(minute, window=None, fav_goals=0):
+def goals_needed(fav_goals, opp_goals):
+    """Total goals the favourite must END UP having scored for the bet to cash.
+
+    Level -> backed to WIN, so one more than it has: 1-1 needs 2.
+    Behind -> backed the DOUBLE CHANCE, which cashes on a draw, so it must reach
+    the opponent's total: 0-2 needs TWO goals, not one.
+
+    Rennes 2-0 Paris Saint Germain (2026-08-23) is why this is not just
+    `fav_goals + 1`. PSG had scored nothing, so the bar was set at 1x - one
+    goal's worth of shots - while the X2 bet actually required them to score
+    twice. The evidence demanded was half what the bet needed.
+    """
+    return max(fav_goals + 1, opp_goals)
+
+
+def thresholds(minute, window=None, fav_goals=0, opp_goals=None):
     """(volume, momentum) threshold dicts at a given minute.
 
-    THE VOLUME BAR IS WHAT THE NEXT GOAL COSTS. A favourite that has already
-    scored needs ANOTHER one to change the result, so its bar is multiplied by
-    (fav_goals + 1): at 1-1 the question is not "has it done enough to score"
-    but "has it done enough to score twice". The half-speed clock scaling then
-    applies on top of that doubled base.
+    THE VOLUME BAR IS WHAT THE BET ACTUALLY COSTS, in goals. It is multiplied by
+    goals_needed(): at 1-1 the question is "enough to score twice", and at 0-2 -
+    where the double chance only cashes on a draw - it is also "enough to score
+    twice", even though nothing has been scored yet. The half-speed clock
+    scaling applies on top of that.
 
     The momentum bar is deliberately NOT multiplied - momentum asks whether the
     side is on top RIGHT NOW, which does not change because it scored earlier.
     It scales with the window ACTUALLY measured, since a 20-minute window judged
     against a 30-minute bar would never pass.
     """
-    mult = fav_goals + 1
+    opp_goals = fav_goals if opp_goals is None else opp_goals
+    mult = goals_needed(fav_goals, opp_goals)
     vol = {k: config.BASE45[k] * mult * vol_scale(minute) for k in config.KEYS}
     w = config.WINDOW if window is None else window
     mom = {k: config.BASE45[k] * (w / 45.0) for k in config.KEYS}
@@ -219,13 +235,25 @@ def time_factor(minute):
     return max(1.0 - w, min(1.0 + w, mult))
 
 
-def evaluate(history, fid, minute, fav, opp, fav_goals):
-    """The full decision for one checkpoint."""
+def evaluate(history, fid, minute, fav, opp, fav_goals, opp_goals=None):
+    """The full decision for one checkpoint.
+
+    opp_goals defaults to fav_goals (level) so older callers keep working, but
+    the live engine always passes it - the volume bar depends on the DEFICIT,
+    not just on what the favourite has scored.
+    """
+    opp_goals = fav_goals if opp_goals is None else opp_goals
     dfav, dopp, approx, win_min = window_delta(history, fid, minute, fav, opp)
-    vol_th, mom_th = thresholds(minute, win_min or config.WINDOW, fav_goals)
+    vol_th, mom_th = thresholds(minute, win_min or config.WINDOW,
+                                fav_goals, opp_goals)
     mom_met, _mom_r, _mom_d, mom_det = assess(dfav, dopp, mom_th)
     vol_met, vol_r, vol_d, vol_det = assess(fav, opp, vol_th)
     mom_r = _mom_r
+
+    # how many of the four metrics actually have data - when xG is missing this
+    # is 3, so the requirement is "NEED of 3" rather than "NEED of 4". Computed
+    # before the gates below, which depend on it.
+    n_present = sum(1 for k in config.KEYS if fav.get(k) is not None)
 
     extra = []
     if fav_goals == 0:
@@ -241,6 +269,19 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
         basis = ("scored %d: momentum(%s) OR %dx cumulative(%s)"
                  % (fav_goals, "yes" if a else "no", fav_goals + 1,
                     "yes" if b else "no"))
+
+    # ONE SIDE OF THE EVIDENCE MUST BE STRONG. Torino 0-0 Milan (2026-08-23)
+    # fired on 2 of 4 volume and 2 of 4 momentum - the bare minimum twice over -
+    # and Hellas Verona fired on momentum alone with cumulative at 1 of 4. Both
+    # cleared the letter of the rule while being thin evidence for a real bet.
+    # The better of the two must now reach STRONG_NEED and the other must still
+    # reach NEED. With xG absent only three metrics exist, so STRONG_NEED falls
+    # back to NEED (2 of 3 on both) rather than demanding 3 of 3.
+    strong = config.STRONG_NEED if n_present >= 4 else config.NEED
+    if ok and (max(vol_met, mom_met) < strong or min(vol_met, mom_met) < config.NEED):
+        ok = False
+        basis += (" [BLOCKED: vol %d mom %d, need %d on one and %d on the other]"
+                  % (vol_met, mom_met, strong, config.NEED))
 
     # CLEAR DOMINANCE. An alert claims the favourite is dominating but not
     # winning, so it must not fire while the opponent is out-performing it on
@@ -274,9 +315,6 @@ def evaluate(history, fid, minute, fav, opp, fav_goals):
                  + 0.15 * dom_score(vol_d))
     tmult = time_factor(minute)
     conv = max(0.0, min(100.0, base_conv * tmult))
-    # how many of the four metrics actually have data - when xG is missing this
-    # is 3, so the requirement is "NEED of 3" rather than "NEED of 4".
-    n_present = sum(1 for k in config.KEYS if fav.get(k) is not None)
     return Evaluation(
         ok=ok, basis=basis, approx=approx, conv=round(conv, 1),
         vol_met=vol_met, mom_met=mom_met, n_present=n_present, win_min=win_min,

@@ -121,9 +121,12 @@ def test_scored_case_needs_a_real_window_too():
     assert "BLOCKED" in ev.basis
 
 
-def test_scored_case_is_either_or_when_the_window_is_real():
-    """The either/or structure itself is intact: given a genuine window, weak
-    momentum alone does not fire but a big cumulative total still does."""
+def test_scored_case_needs_evidence_on_BOTH_sides():
+    """SPEC CHANGE 2026-08-24: the scored branch used to be either/or, so a big
+    cumulative total fired with almost no momentum - and symmetrically Hellas
+    Verona fired on momentum alone with cumulative at 1 of 4. Both are thin
+    evidence for a real bet. One side must now be STRONG and the other at least
+    adequate, so a lopsided case no longer fires."""
     fid, minute = "3", 75
     base = rules.Snapshot(45, {"xg": 5.5, "shots": 58, "sot": 17, "box": 29},
                           {"xg": 0.05, "shots": 0, "sot": 0, "box": 0}, 1)
@@ -132,8 +135,8 @@ def test_scored_case_is_either_or_when_the_window_is_real():
     ev = rules.evaluate({fid: [base]}, fid, minute, fav, opp, fav_goals=1)
     assert not ev.approx
     assert ev.mom_met < 2       # only a trickle in the last 30 minutes
-    assert ev.ok                # ...but the cumulative branch carries it
-    assert "cumulative(yes)" in ev.basis
+    assert not ev.ok            # ...and cumulative alone no longer carries it
+    assert "BLOCKED" in ev.basis
 
 
 # --- checkpoints ------------------------------------------------------------

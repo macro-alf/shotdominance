@@ -71,7 +71,8 @@ def replay_match(fx, shots):
 
         hist = reconstruct.history_to(series, goals, fav_side, cp)
         ev = rules.evaluate({fx["match_id"]: hist}, fx["match_id"], cp,
-                            series[fav_side][cp], series[opp_side][cp], fav_g)
+                            series[fav_side][cp], series[opp_side][cp],
+                            fav_g, opp_g)
 
         fired = bool(ev.ok and ev.conv >= config.CONV_FIRE_MIN and ev.conv > best)
         if fired:

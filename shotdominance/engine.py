@@ -408,11 +408,13 @@ class Monitor:
             print("   %-38s %2d' fav=%-14s %s  cp=%s (leading)"
                   % (label, minute, fav_name,
                      self.brief(fstat, ostat,
-                                rules.thresholds(minute, fav_goals=fav_goals)[0]),
+                                rules.thresholds(minute, fav_goals=fav_goals,
+                                                 opp_goals=opp_goals)[0]),
                      cp), flush=True)
             return
 
-        ev = rules.evaluate(self.history, fid, minute, fstat, ostat, fav_goals)
+        ev = rules.evaluate(self.history, fid, minute, fstat, ostat,
+                            fav_goals, opp_goals)
         # When the favourite is behind the tradeable market is the double chance
         # (win or draw), not an outright win from behind. When level it is the
         # win market as before.

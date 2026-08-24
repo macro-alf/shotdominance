@@ -52,6 +52,14 @@ WINDOW = _i("WINDOW", 30)                # trailing momentum window, minutes
 MIN_WINDOW = _i("MIN_WINDOW", 20)
 NEED = 2                                 # how many of the four metrics must hold
 
+# One side of the evidence must be STRONG, not merely adequate. Torino 0-0 Milan
+# (2026-08-23) fired on 2 of 4 volume and 2 of 4 momentum - the bare minimum
+# twice over - and Hellas Verona fired on momentum alone with cumulative at 1 of
+# 4. A signal now needs STRONG_NEED on the better of the two AND NEED on the
+# other. With only three metrics present (no xG) STRONG_NEED falls back to NEED,
+# i.e. 2 of 3 on both.
+STRONG_NEED = _i("STRONG_NEED", 3)
+
 # CLEAR DOMINANCE GATE (2026-08-23). FC Zurich 1-1 Basel fired with the
 # favourite realising 0 of 4 cumulative metrics while the OPPONENT led on xG
 # (1.12 vs 0.94) - momentum alone carried it through the scored branch. An alert
