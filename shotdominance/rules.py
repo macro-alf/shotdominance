@@ -278,7 +278,8 @@ def evaluate(history, fid, minute, fav, opp, fav_goals, opp_goals=None):
     # reach NEED. With xG absent only three metrics exist, so STRONG_NEED falls
     # back to NEED (2 of 3 on both) rather than demanding 3 of 3.
     strong = config.STRONG_NEED if n_present >= 4 else config.NEED
-    if ok and (max(vol_met, mom_met) < strong or min(vol_met, mom_met) < config.NEED):
+    if config.STRONG_GATE and ok and (
+            max(vol_met, mom_met) < strong or min(vol_met, mom_met) < config.NEED):
         ok = False
         basis += (" [BLOCKED: vol %d mom %d, need %d on one and %d on the other]"
                   % (vol_met, mom_met, strong, config.NEED))

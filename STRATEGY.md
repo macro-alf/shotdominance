@@ -96,10 +96,22 @@ real result.
   (`TIME_WEIGHT=0.5`, `TIME_PIVOT_MIN=75`): ×1.33 at 45' → ×1.00 at 75' — rewards
   earlier dominance (more time to convert), never suppresses a late signal.
   Odds are **deliberately not** in conviction (they drive the filter + sizing).
-- **Firing:** only if conviction ≥ **50**, and a live signal re-fires only when
-  conviction beats its prior alerted high (no nagging on a fading situation).
+- **Firing:** only if conviction ≥ **65** (raised from 50 on 2026-08-30), and a
+  live signal re-fires only when conviction beats its prior alerted high (no
+  nagging on a fading situation). **The 50 floor was measured to do nothing:**
+  on 2020–23, rule-passed checkpoints below 50 carried +8.16pp stratified lift
+  and those above it +8.20pp — it moved raw win rate only by picking cheaper,
+  earlier situations. Conviction earns its keep at the top end, so the floor
+  moved to where the lift actually starts: ≥65 gives 54.2% / +9.34pp on 850
+  signals, against 50.7% / +8.20pp on 1,440 at ≥50. Searched on 2020–23, **not
+  confirmed** — the holdout is spent.
 - **Sizing:** base `1000/(price−1)` × conviction-multiplier [0.5–2.0], capped by
   0.65-Kelly, 10%/bet and 15% total exposure. Bankroll €20k, commission 3%.
+  `CONV_MID` **must equal `CONV_FIRE_MIN`** — it is the conviction mapping to
+  ×1.0, so if the floor rises and it does not, every stake inflates (at floor 65
+  with `CONV_MID` still 50 the weakest legal signal would size at ×1.43). It is
+  now defaulted off `CONV_FIRE_MIN` so the two cannot drift apart. The
+  multiplier therefore spans ×1.0 at 65 to ×2.0 at 85.
   Blotter records `side` + `final_score`; settlement grades by stored side.
 
 ## Architecture
@@ -207,6 +219,14 @@ Positive in **4/4 seasons** (+8.8 to +17.5pp) and **5/5 leagues** (+12.6 to
 +17.1pp). The rule was **pre-specified** — fixed in HANDOVER.md and running live
 before this test existed — so nothing here is fitted. The conviction gate earns
 its place: rule-alone is 44.9%, conviction lifts it to 51.1%.
+
+**CORRECTION 2026-08-30 — that last sentence is measured on RAW win rate and
+does not survive stratification.** Rule-passed checkpoints below the old 50
+floor carried +8.16pp stratified lift; those above it +8.20pp. The gate was
+selecting shorter prices and earlier minutes, which is exactly the confound
+stratified lift exists to strip out. This is the third time raw win rate has
+misled this project. The floor has been moved to 65, where lift genuinely does
+rise (+9.34pp at n=850, +14.33pp at n=424 for a 75 floor).
 
 **This is not an edge.** A favourite dominating shots has already shortened
 in-play; Phase 1 deliberately ignores price. Whether 51.1% beats the price you

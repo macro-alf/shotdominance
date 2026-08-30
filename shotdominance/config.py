@@ -27,7 +27,30 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # --- eligibility gates ------------------------------------------------------
-MIN_ODDS = _f("MIN_ODDS", 1.30)          # pre-match favourite band, lower
+# PRE-MATCH FAVOURITE BAND. This decides who gets WATCHED; the separate LIVE
+# price band (SIGNAL_MIN/MAX below) decides what can actually be BET.
+#
+# FLOOR DROPPED 1.30 -> 1.01 on 2026-08-30, on measurement not opinion.
+# Backtest 2020-23, 5 leagues, strong gate on throughout:
+#     band 1.30-3.00 (old)   n=575  win 51.3%  stratified lift +9.28pp  z=4.61
+#     band 1.01-3.00 (new)   n=691  win 54.6%  stratified lift +9.72pp  z=5.29
+# The 116 signals the floor was discarding score +15.06pp stratified (z=3.30)
+# ON THEIR OWN - the HIGHEST-lift population in the dataset, positive in 4/4
+# seasons. Lift is price-stratified, so this is not "short favourites win more":
+# they beat the base rate of their OWN price bucket. Live, this also recovers
+# fixtures that were vanishing with no log line at all (Barcelona v Athletic and
+# Juventus v Parma, both 2026-08-29).
+# Caveats kept deliberately visible: 2020-23 is search data and the 2014-19
+# holdout is SPENT, so this is searched, not confirmed; season dispersion is
+# wide (+0.5, +8.5, +30.4, +19.0pp on 22-35 signals each); and Phase 1 carries
+# no in-play prices, so how many of the added signals survive the live 1.75
+# floor is unknown until Phase 2.
+MIN_ODDS = _f("MIN_ODDS", 1.01)          # pre-match favourite band, lower
+# CEILING LEFT AT 3.00 for now. Removing it changed the backtest by exactly
+# nothing (identical n and lift) because a "favourite" longer than 3.00 barely
+# exists in the five big leagues - so the data cannot speak to it. Live we track
+# 24 competitions where it can, and above ~3.00 the shorter side of a near
+# coin-flip is not really a favourite, which is the thesis, not a threshold.
 MAX_ODDS = _f("MAX_ODDS", 3.00)          # pre-match favourite band, upper
 # Widened 2.25 -> 3.00 on 2026-08-23 at Alf's instruction: a side quoted
 # 2.99 pre-match that is dominating in play is still the thesis. Note this
@@ -59,6 +82,14 @@ NEED = 2                                 # how many of the four metrics must hol
 # other. With only three metrics present (no xG) STRONG_NEED falls back to NEED,
 # i.e. 2 of 3 on both.
 STRONG_NEED = _i("STRONG_NEED", 3)
+
+# Kill switch for the whole gate above, so its COST can be measured against four
+# seasons rather than argued from single days. Default True = live behaviour
+# unchanged. Note that STRONG_NEED alone cannot turn the gate off: the
+# `min(vol, mom) >= NEED` half is what closes the momentum-only branch, and that
+# survives any value of STRONG_NEED. Set STRONG_GATE=0 to remove it entirely,
+# which restores the pre-2026-08-24 "momentum OR cumulative" scored branch.
+STRONG_GATE = _i("STRONG_GATE", 1) != 0
 
 # CLEAR DOMINANCE GATE (2026-08-23). FC Zurich 1-1 Basel fired with the
 # favourite realising 0 of 4 cumulative metrics while the OPPONENT led on xG
@@ -104,7 +135,20 @@ CONV_CAP = _f("CONV_CAP", 2.0)
 # a signal must reach at least this conviction to fire at all, and a live signal
 # only re-fires when its conviction exceeds the highest already alerted for that
 # fixture (no nagging on a deteriorating situation).
-CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 50.0)
+#
+# RAISED 50 -> 65 on 2026-08-30, on measurement. The 50 floor was doing nothing:
+# on 2020-23, rule-passed checkpoints BELOW 50 carried +8.16pp stratified lift
+# and those at or above it carried +8.20pp. It moved raw win rate (43.6% ->
+# 50.7%) purely by selecting cheaper, earlier situations - the exact confound
+# stratification exists to remove. Conviction only earns its keep at the top:
+#     floor >=50 (old)  n=1440  win 50.7%  lift  +8.20pp  breadth-adj 311
+#     floor >=65 (new)  n= 850  win 54.2%  lift  +9.34pp  breadth-adj 272
+#     floor >=75        n= 424  win 60.8%  lift +14.33pp  breadth-adj 295
+# 65 is the point where per-bet lift starts climbing while keeping ~210
+# signals/season of breadth. Searched on 2020-23, NOT confirmed - the 2014-19
+# holdout is spent. Revisit against real prices in Phase 2, where the
+# breadth-versus-edge trade actually gets settled.
+CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 65.0)
 
 # time-remaining factor. A dominant favourite that still needs a goal is a better
 # bet earlier in the match - more time to convert the dominance. Conviction is
@@ -129,7 +173,14 @@ MAX_TOTAL_PCT = _f("MAX_TOTAL_PCT", 0.15)   # total open exposure cap
 TARGET_WIN = _f("TARGET_WIN", 1000.0)    # base stake targets this profit
 MULT_MIN = 0.5
 MULT_MAX = _f("MULT_MAX", 2.0)           # conviction multiplier range
-CONV_MID = _f("CONV_MID", 50.0)          # conviction that maps to x1.0
+# CONV_MID MUST TRACK CONV_FIRE_MIN. It is the conviction that maps to a x1.0
+# multiplier, so it has to be the LOWEST conviction that can fire - otherwise
+# raising the floor silently inflates every stake. Left at 50 while the floor
+# moved to 65, the weakest permissible signal would have sized at x1.43 and the
+# multiplier range would have collapsed to [1.43, 2.0]: a 43% across-the-board
+# stake rise nobody asked for. Defaulted off CONV_FIRE_MIN so it cannot drift
+# again.
+CONV_MID = _f("CONV_MID", CONV_FIRE_MIN)  # conviction that maps to x1.0
 CONV_TOP = _f("CONV_TOP", 85.0)          # conviction that maps to MULT_MAX
 
 # edge curve (probability points added to 1/odds), interpolated by price. Model

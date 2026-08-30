@@ -245,7 +245,9 @@ class Monitor:
         conviction floor and the only-re-fire-on-a-new-high rule. Returns
         (fire, reason_when_not_firing)."""
         if conv < config.CONV_FIRE_MIN:
-            return False, ("no signal: conviction %.0f below %.0f floor"
+            # one decimal, not zero: %.0f printed "conviction 50 below 50 floor"
+            # for a true 49.6 (Mainz, 2026-08-29 cp75), which reads as a bug
+            return False, ("no signal: conviction %.1f below %.0f floor"
                            % (conv, config.CONV_FIRE_MIN))
         prev = self.best_conv.get(fid)
         if prev is not None and conv <= prev:

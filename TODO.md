@@ -1,9 +1,390 @@
 # Shot-Dominance Monitor — Open Items / Roadmap
 
 Pending work explored but not yet done, roughly by priority. See `STRATEGY.md`
-for context. Last updated 2026-08-16.
+for context. Last updated 2026-08-29.
+
+## URGENT — the safety net is not working
+
+- [ ] **THE WATCHDOG IS DEAD. FIX IT BEFORE ANYTHING ELSE.** Proven 2026-08-30.
+  `InplayMonitor` **missed its 09:45 run entirely** — no `daily-2026-08-30.log`,
+  heartbeat still reading `2026-08-29T23:46:30 finished`, and the task's
+  NextRunTime had already rolled forward to 31 Aug 09:45. Sunday's 69-fixture
+  card would have gone completely unwatched. It was only caught because a human
+  happened to look at 12:07 and start the task by hand.
+
+  **This is exactly the failure `watchdog.py` was written for** after 2026-08-18:
+  a previous-day `finished` heartbeat sitting there during the active window
+  hits the `"supervisor never started today"` branch in `diagnose()`, which is
+  supposed to Telegram and restart `InplayMonitor`. It did not fire.
+
+  **Evidence it is not merely mis-deciding — it is not RUNNING to completion:**
+      08-29 09:08:17  LastTaskResult 267014  nothing written to watchdog.log
+      08-30 12:06:48  LastTaskResult 267014  nothing written to watchdog.log
+  267014 = 0x41306 = SCHED_S_TASK_TERMINATED. `main()` calls `log()` on EVERY
+  path including "outside the active window", so an empty log means it died
+  before reaching that line. Last real entry in `logs/watchdog.log` is
+  2026-08-28T23:35. It has therefore been silently dead for at least two days,
+  through both a missed start (08-30) and a 23-minute feed outage (08-29).
+
+  **Diagnose in this order:** (1) run `python watchdog.py --status` by hand and
+  see if it even completes; (2) check the task's ExecutionTimeLimit (PT10M) and
+  what it is actually blocking on — `telegram.Telegram()` construction and any
+  network call are the suspects; (3) check whether Task Scheduler is killing it
+  on resume-from-sleep, since both bad runs were the first run after a wake.
+  The Task Scheduler operational log appears to be DISABLED on this machine —
+  enable it, or this stays unprovable.
+
+  **Also fix the missed-occurrence roll-forward.** `StartWhenAvailable` is True
+  but the 08-30 09:45 occurrence was skipped rather than run late. Whatever the
+  watchdog does, the monitor task itself should not silently give up on a day.
+
+  Safe to work on TODAY only if the monitor is already running - it shares no
+  quota (`--status` makes no API calls).
 
 ## High value
+
+- [x] **MEASURED THE STRONG-EVIDENCE GATE — DONE 2026-08-30. VERDICT: KEEP IT.**
+  The live-log evidence below suggested the gate was over-tightening. **It is
+  not.** Measured on 2020-23, 5 leagues, 26,530 eligible checkpoints, via a new
+  `STRONG_GATE` config flag (default on = live behaviour unchanged):
+
+      gate ON  (live rule)    n=575  win 51.3%  strat lift +9.28pp  z=4.61  BA 222
+      gate OFF (pre-24 Aug)   n=824  win 49.4%  strat lift +7.01pp  z=4.16  BA 201
+
+  The gate wins on per-bet lift AND on breadth-adjusted lift. **The 271 signals
+  it destroys are worth nothing: +1.14pp stratified, z=0.39** — noise — and flat
+  across seasons (+0.6, +2.0, -0.8, +2.9). The shapes it kills are (vol 2,mom 2)
+  x93, (0,4) x66, (1,4) x56: exactly the bare-minimum and momentum-only cases it
+  was designed for. Torino 0-0 Milan and Hellas Verona were the right calls.
+
+  **Why the live logs misled me.** The +7.1pp "momentum ONLY" figure in the item
+  below is from the OLD rule set, before clear-dominance, `goals_needed` and
+  volume scaling. Those gates already remove the good momentum-only signals'
+  bad neighbours; what the strong gate takes on top is residue. Counting
+  rejections (35 in a day) measures nothing without measuring their quality.
+
+  **One caveat that matters.** The backtest has xG on 100% of rows, so
+  `n_present=4` always and `STRONG_NEED=3` always applies. LIVE, xG is present
+  on only 45% of rows, so more than half the time the gate degrades to 2-of-3.
+  **The live gate is WEAKER than the one measured to be good** — which argues
+  for fixing xG availability, not for loosening the gate.
+  Keep `STRONG_GATE` in place as a measurement tool; do not remove the flag.
+
+- [ ] ~~Original hypothesis (kept for the record, now disproven by the above).~~
+  Queued 2026-08-30 off two
+  days of live evidence. Shipped 2026-08-24, designed from single days of live
+  signals, **never measured against four seasons** — and it is now by far the
+  largest rejecter in the system.
+
+  **2026-08-29: 35 distinct checkpoints blocked SOLELY by this gate, across 12
+  fixtures, 15 of them with momentum 3/3 (dominant on EVERY in-window metric) —
+  against 2 signals fired all day.** A 17:1 block-to-fire ratio.
+      Liverpool v Forest      cp60,65,70,75      Servette v Luzern   cp50,55,60,65
+      Brest v Toulouse        cp45,50,55,60      Levante v Betis     cp45,50,55
+      Heidenheim v Dresden    cp65,70,75         Entella v Cesena    cp55,60,65
+      Sassuolo v Torino       cp70,75            Auxerre v Angers    cp45,50
+      Real Sociedad v Espanyol cp50,55           + Middlesbrough, Blackburn
+
+  **Why this is not just "the gate working".** Phase 1 measured this exact
+  population: `scored: momentum ONLY` n=541, win 49.7%, **lift +7.1pp (z=3.40)**
+  — the LARGEST contributor and the HIGHEST lift of any branch. This file
+  already says, in terms, "Do not tighten that branch." The 24 Aug gate
+  converted it from either/or into both-with-one-strong, which tightens it.
+
+  **AND there is a structural interaction that closes the branch entirely.**
+  `goals_needed` multiplies the cumulative bars: at 1-1 it is x2, at 2-2 x3
+  (shots bar 31.0 at 48'). Volume then becomes unreachable, so the scored branch
+  is momentum-only BY CONSTRUCTION — and `STRONG_NEED` demands volume >= 2.
+  Neither gate does this alone; together they make a favourite level at 2-2, or
+  behind by two, effectively unable to signal at any level of dominance.
+  Levante 2-2 Betis is the worked example: four checkpoints, momentum 3/3 every
+  time, never fireable.
+
+  **Measure it, do not argue it.** `backtest/replay.py` calls `rules.evaluate`
+  directly, so run 2020-23 with `STRONG_NEED=2` (off) vs 3 (on) and report
+  stratified lift, n, and breadth-adjusted lift x sqrt(n) for both, split by
+  branch and by scoreline state. Zero quota. If the gate costs breadth without
+  buying lift, it should come off or be restricted to the 0-goals branch.
+  **The 2014-19 holdout is SPENT — this can be searched, not confirmed.**
+
+- [ ] **MON 31 AUG: DEEP ANALYSIS OF IN-PLAY STAT AVAILABILITY BY LEAGUE.**
+  Queued 2026-08-29. **The question this answers: can we keep using API-Football
+  at all, or does the strategy require a different provider?** This is the
+  prerequisite for the provider item below — do not price up vendors until this
+  is done, because it decides whether the problem is fixable by trimming the
+  watchlist or is a property of the feed.
+
+  **Why now — the competition-specific theory died within a day.** On 2026-08-28
+  the story looked clean: UEFA nights were catastrophic, domestic nights were
+  perfect. Then 2026-08-29 broke it.
+
+      day     mix              xG null   stats-from   45' cp lost
+      08-27   95% UEFA           99%        10'          57%
+      08-28   0% UEFA (evening)   5%        11'           0%
+      08-29   0% UEFA (all day)  98%        10'           0%
+
+  **THE 08-29 RESULT KILLS THE COMPETITION THEORY AND REPLACES IT WITH A WORSE
+  ONE.** 71 domestic fixtures including Premier League, Bundesliga, Serie A and
+  La Liga, and xG was null on 4,570 of 4,671 rows. The 2% that had it all
+  arrived in ONE poll late in the evening, each fixture picking xG up at
+  whatever minute it happened to be at:
+      Sevilla v Atletico     first xg at 46'    (21:30 KO - the only useful one)
+      Padova v Verona        first xg at 75'
+      Ascoli v Carrarese     first xg at 78'
+      Zwolle v NEC           first xg at 79'
+      Auxerre, Lyon, Brest   first xg at 90'
+  So xG availability is a property of **WALL-CLOCK TIME**, not of competition.
+  It came up around 22:30-23:00 after being down all day. You cannot trim the
+  watchlist out of a metric that is absent until 22:30. Note also the digest's
+  own metric table for the day: `xg  0 pass, 0 abs, 2 dom, 4 both, 1339 missing`
+  — xG contributed NOTHING to a single evaluation.
+  **Therefore cut the analysis by wall-clock hour FIRST, then by competition.**
+
+  **Two measurement gaps found the same day, fix them before trusting output:**
+  - `signalcheck.py` reported `gaps 0%, stats-from 10', lost 0%` for 08-29
+    despite a 23-minute total API outage. **It does not see outages at all.**
+    Add a poll-level availability measure (blind polls / total polls).
+  - **Feed BATCH PUBLISHING manufactures fake momentum.** Fiorentina went from
+    8 shots to 13 and 3 box to 7 in a single 60s poll — a backlog landing at
+    once. Momentum is a delta over the window, so a batch arrival reads as a
+    burst of dominance that never happened. Distinct from plain lateness, and
+    the checkpoint-grace fix judges on the post-batch snapshot. Measure how
+    often a single poll moves a metric by more than a plausible amount.
+
+  08-29 was 71 domestic fixtures including Premier League and Bundesliga, and
+  **xG was null on 465 of 465 rows** — the monitor still flagged
+  `[xG NOT SEEN YET]` two hours in, with Liverpool v Nottingham Forest live.
+  So "UEFA is the problem" is wrong, or at best incomplete. Untested
+  alternatives: an afternoon/evening split (08-28's clean data was evening-only),
+  a whole-day feed outage, or season-start xG lag.
+
+  **What to measure** — per competition, and per metric, not pooled:
+  - **a.** Minute at which each of xg / shots / sot / box FIRST appears, by
+    competition and by kickoff slot (afternoon vs evening). Pooled numbers hid
+    this for two weeks.
+  - **b.** Share of fixtures whose 45' checkpoint is unjudgeable, by competition.
+  - **c.** Share of rows where only ONE metric is present. On 08-27 that was 25%
+    of rows, and `NEED=2` makes those fixtures structurally unfireable no matter
+    how dominant — see the separate item on NEED not scaling with `n_present`.
+  - **d.** Which metrics ever pass. On 08-27 `sot` was the ONLY metric that
+    cleared a test all day; `shots` and `box` passed zero times in 982
+    evaluations. If three of the four metrics are decorative, the 4-metric rule
+    is a fiction and the backtest does not describe the live system.
+  - **e.** Whether xG absence is feed-wide on a given day or per-competition —
+    the `[xG NOT SEEN YET]` flag answers this cheaply and is already logged.
+
+  **Method.** Start from the logs — `logs/monitor-*.log` back to 08-14 is two
+  weeks of free evidence and costs no quota. `signalcheck.py` already computes
+  the daily version; extend it to group by competition and kickoff slot rather
+  than by day. Only after the log analysis is exhausted, spend quota on a
+  controlled probe (`monitor.py --stats` during a major-league match, the
+  existing "xG characterisation" item under Medium). **Do not run a sweep on a
+  match day** — Saturday 08-29 alone was planned at ~6,429 of 7,500.
+
+  **HARD RULE, set by Alf 2026-08-29: no test, probe or sweep that spends API
+  requests may run on a day the monitor is live.** The 7500/day is shared with
+  the monitor and there is no headroom on a full card. This audit is designed to
+  be answerable from logs alone for exactly that reason; if it turns out a live
+  probe is unavoidable, it waits for a no-fixture day or runs after the monitor
+  has stopped and the day's remaining quota has been read from `/status`. See
+  also "Budget the one-off survey scripts" below — same failure, already cost a
+  night's monitoring on 2026-08-16.
+
+  **Decision rule, fixed in advance so the answer is not negotiated after the
+  fact.** Target from the provider item: stats from <=15' for >=80% of fixtures.
+  - If the failures concentrate in identifiable competitions -> trim the
+    watchlist, keep API-Football, no spend.
+  - If they concentrate in a time slot or are feed-wide and intermittent -> it
+    is an ingest-latency property of the provider; ask their support first
+    (costs nothing, and a higher tier will NOT fix a sourcing delay), then price
+    up alternatives.
+  - If xG specifically is unreliable but core shot stats are not -> consider
+    demoting the rule to 3 metrics permanently rather than changing provider.
+    Cheaper than a migration, but it is a rule change and therefore needs the
+    Phase 1b protocol on fresh seasons.
+
+  **Do not tune thresholds off this.** It is a data-availability audit; the
+  binding constraint is whether the numbers arrive, not where the bars sit.
+
+- [x] **FLOOR DROPPED 1.30 -> 1.01 — DONE 2026-08-30, on measurement.**
+      band 1.30-3.00 (old)   n=575  win 51.3%  strat lift +9.28pp  z=4.61  BA 222
+      band 1.01-3.00 (new)   n=691  win 54.6%  strat lift +9.72pp  z=5.29  BA 256
+  The 116 recovered signals score **+15.06pp stratified (z=3.30) on their own** —
+  the highest-lift population in the dataset, positive in 4/4 seasons, 86 level
+  / 30 behind, concentrated at cp45-cp55. Full rationale and caveats are in the
+  comment block at `config.py:MIN_ODDS`. Two objections I raised turned out to
+  be wrong and are recorded so they are not re-litigated:
+  - **The "sizing hole" does not exist.** `engine.py:479` returns
+    `stake=0.0, bound="no price"` when there is no live price, and a live price
+    below 1.75 blocks the signal outright. No path produces a large stake.
+  - **Quota is not affected.** `daily.pace()` budgets on `len(pending)` — every
+    planned fixture — so the band never reduced the estimate. Dropping it spends
+    reserve that was always allocated.
+
+- [ ] **MON 31 AUG: TEST `Goalkeeper Saves` AS A REPLACEMENT FOR xG.**
+  Asked for by Alf 2026-08-30. Live availability measured over 26,120 watched
+  polls (14-30 Aug): **sot 84.4%, shots 80.3%, box 79.8%, xg 45.3%.** xG is
+  present less than half the time and is 0% in all three UEFA competitions,
+  Allsvenskan, Ligue 2 and Segunda. A 4-metric rule that runs on 3 metrics most
+  of the time is not the rule the backtest validated.
+
+  **What the feed actually offers.** Raw `/fixtures/statistics` dump 2026-08-24
+  showed **18 entries per team**, of which only NINE were ever recorded:
+  `Shots on Goal`(=sot), `Shots off Goal`, `Total Shots`(=shots),
+  `Blocked Shots`, `Shots insidebox`(=box), `Shots outsidebox`,
+  `Goalkeeper Saves`, `expected_goals`(=xg), `goals_prevented`.
+  **The other nine have never been captured.** `apifootball.show_stats`
+  (`apifootball.py:358`) prints all types unfiltered but has never been run
+  against a live match. **STEP 0: run `python monitor.py --stats` ONCE before
+  the monitor starts** (one request) and record all 18. Do not skip this - we
+  may be choosing from an incomplete menu.
+
+  **Of the recorded nine, only `Goalkeeper Saves` is a real candidate.**
+  `Shots off Goal`, `Blocked Shots` and `Shots outsidebox` are arithmetic
+  relatives of what we already have (on+off = total; inside+outside = total), so
+  they add almost no independent information. `goals_prevented` is derived FROM
+  xG and will therefore be missing exactly when xG is missing - useless as a
+  substitute.
+
+  **CHECK THIS FIRST, IT MAY KILL THE IDEA IN AN HOUR.** Saves by the opponent
+  keeper are approximately `fav_sot - fav_goals` — every shot on target that did
+  not go in was saved. If so, "saves" is very nearly a linear function of a
+  metric we already use, and would add breadth (better availability) but almost
+  no new information. **This is testable for FREE on the backtest**: Understat
+  carries shot outcomes, so reconstruct `saves = opp_sot - opp_goals`, measure
+  its correlation with `sot`, and only then measure lift. If r is high, the
+  honest conclusion is "better availability, same signal" - which may still be
+  worth having, but it is a coverage fix, not a new metric.
+
+  **Then measure, in this order, all on 2020-23 with zero quota:**
+  - **a.** Baseline: the current 4-metric rule (n=691, +9.72pp with the new
+    odds floor) versus a permanent 3-metric rule with xG REMOVED entirely. If
+    dropping xG costs little, that alone is the answer and no substitute is
+    needed. Note `STRONG_NEED` falls back to `NEED` at 3 metrics, so this also
+    weakens the strong gate — report both effects separately.
+  - **b.** 4-metric rule with saves substituted for xG.
+  - **c.** 5-metric rule (keep xG when present, add saves).
+  Report stratified lift, n, and breadth-adjusted lift for each.
+  **The 2014-19 holdout is SPENT — searched, not confirmed.**
+  Cross-refs the availability audit above and the `NEED`/`n_present` item below.
+
+- [ ] **DECIDE THE CEILING (`MAX_ODDS`, still 3.00).** Removing it changed the
+  backtest by EXACTLY nothing — identical n and lift — because a favourite
+  longer than 3.00 barely exists in the five big leagues. The data cannot speak
+  to it. Live we track 24 competitions where it can, and above ~3.00 the shorter
+  side of a near coin-flip is not really a favourite, which is the thesis rather
+  than a threshold. Needs a judgement call, or evidence from a wider league set.
+  Original request from Alf 2026-08-29 was to drop the whole filter.
+
+- [ ] ~~Original item, superseded by the two above.~~
+  Asked for by Alf 2026-08-29. The band decides who gets WATCHED; the separate
+  LIVE price band (1.75-4.00) decides what gets BET. The claim to test is that
+  the second one is doing the real work and the first is only costing coverage.
+
+  **What prompted it.** Two fixtures vanished from the monitor entirely on
+  2026-08-29 — **Barcelona v Athletic Club** and **Juventus v Parma** — neither
+  appearing in a single poll despite being in the plan, in tracked competitions,
+  and with every other fixture in their kickoff slot polled normally. Both
+  almost certainly priced under the 1.30 floor (the shortest `pm=` seen all day
+  was 1.33). `engine.py:382` returns SILENTLY, so this is indistinguishable from
+  a fault — see the separate observability item.
+
+  **The argument FOR dropping it is stronger than it looks.** Lift is measured
+  STRATIFIED, i.e. net of the base rate in the same (price bucket, minute,
+  state) cell. A pure price filter therefore contributes ~0 lift BY
+  CONSTRUCTION — that is exactly why the placebo test works. Consistent with
+  this, Phase 1b found that widening the cap 2.25 -> 3.00 *lowered* raw win rate
+  (51.1% -> 49.5%) while *raising* lift (+6.6 -> +8.1pp). Removing the band
+  should therefore add volume without diluting the measured edge. Whether the
+  added volume is PROFITABLE is a price question, i.e. Phase 2.
+
+  **What it is not free of:**
+  - **a. It is part of the pre-specified Phase 1 rule.** The band is named in
+    `STRATEGY.md` as a gate and was fixed before the backtest existed. Changing
+    it is a rule change: re-run `backtest/replay.py` with the band removed,
+    report baseline and variant side by side, and remember the 2014-19 holdout
+    is SPENT so nothing here can be CONFIRMED, only searched.
+  - **b. Quota.** The band is checked BEFORE `/fixtures/statistics`
+    (`engine.py:382` precedes the stats call), so every fixture it currently
+    rejects is a fixture we would start polling for stats every cycle. Saturday
+    2026-08-29 was already planned at ~6,429 of 7,500 with the band ON. Measure
+    the added fixture count from `logs/daily-*.log` BEFORE changing anything,
+    and re-run `daily.pace()` against it. This could be the binding objection.
+  - **c. The sizing hole at short prices.** `stake_for` uses
+    `TARGET_WIN/(price-1)`, so at 1.15 the base stake is ~6,667 and only the
+    10%-of-bankroll cap stops it. The live 1.75 floor normally prevents this -
+    BUT the price condition is SKIPPED when no live price is available, and the
+    alert still fires. So a very short pre-match favourite with a missing live
+    price could alert and size at the cap. Today produced several `odds=n/a`
+    rows, so this is not hypothetical. Fix the skip-when-missing behaviour, or
+    add an absolute stake sanity check, BEFORE removing the floor.
+  - **d. "Favourite" stops meaning much at the top end.** Above ~3.00 the
+    shorter side of a near-coin-flip is not really a favourite, and the thesis
+    ("a side that SHOULD win is not winning") weakens. Dropping the ceiling is a
+    different question from dropping the floor.
+
+  **Suggested staging** rather than one change: (i) drop the FLOOR only, which
+  is what actually cost us Barcelona and Juventus; (ii) measure coverage and
+  quota impact; (iii) treat the CEILING separately, on backtest evidence. Also
+  consider keeping a wide band (say 1.10-5.00) purely as a quota guard rather
+  than removing the check outright.
+
+- [ ] **RECALIBRATE HOW CONVICTION IS CALCULATED.** Queued 2026-08-29. The score
+  is currently inflated by missing data and barely weighted on dominance, and it
+  **drives the stake multiplier**, so this is a money question, not cosmetics.
+
+  **Keep the distinction clear.** Phase 1 validated conviction as a FILTER: the
+  rule alone wins 44.9%, the conviction gate lifts it to 51.1%. That result
+  stands and must not be broken. What is NOT validated is (i) how the score
+  behaves when metrics are missing and (ii) its use as a SIZING input at all.
+  Aim the work at (i) and (ii); leave the >=50 gate alone unless the evidence
+  says otherwise.
+
+  **Three documented failures, all live:**
+  - **Missing metrics INFLATE the score.** `score()` (`rules.py:194`) averages
+    over present metrics only, and its `0.4 * min(vals)` weakest-link term has
+    no weak link to find when only one value exists. `dom_score` likewise
+    returns a flat 100 off one metric with the opponent on zero. **Brann 0-0
+    PAOK (2026-08-27) posted conv 88 off three shots on target — its only
+    metric — while FC ST. Gallen posted 41 on three metrics including 3/3
+    momentum.** Exactly backwards: less evidence should lower confidence.
+  - **Dominance is nearly ignored.** At 0.15 weight, a side that shoots a lot
+    while being matched shot-for-shot scores highly on a measure that is
+    supposed to mean "dominating but not winning". **Levante 1-0 Real Betis
+    (2026-08-29, 31'): conv 70 — top of the board — with vol 0/3 and mom 0/3,
+    Levante equal or ahead on all three metrics.** Only the clear-dominance
+    gate stopped it, and that gate is a separate mechanism bolted on precisely
+    because conviction failed to express this.
+  - **Rounding makes a legitimate rejection look like an off-by-one.**
+    `_fire_decision` (`engine.py:247`) tests `conv < CONV_FIRE_MIN` — correct,
+    equality passes — but formats both numbers `%.0f`, so ~49.6 prints as
+    `conviction 50 below 50 floor` (Mainz, 2026-08-29 cp75). Cosmetic, but
+    `review.py` parses these lines. Print one decimal.
+
+  **Candidates to evaluate (not decisions):**
+  - **a.** Scale the score by `n_present`, or refuse to emit a conviction at all
+    below some minimum metric count. Ties into the separate `NEED` item — with
+    one metric present a fixture is already unfireable, so reporting conv 88 for
+    it is pure noise in the logs and in `review.py`.
+  - **b.** Raise the dominance weight, or make dominance multiplicative rather
+    than additive so that "not dominant anywhere" cannot score 70.
+  - **c.** Recompute the weights (currently 0.55 volume / 0.30 momentum / 0.15
+    dominance) against measured outcomes rather than assumption. Nobody has ever
+    fitted these.
+  - **d.** Decouple sizing from conviction entirely until Phase 1b item (a) —
+    win rate by conviction decile — actually exists. See the Kelly item,
+    sub-item (e): the conviction multiplier [0.5-2.0] is unfitted, and sub-item
+    (f) suggests flat stakes until there is a measured edge. **This item and
+    that one should be settled together.**
+
+  **Protocol.** Changing the FORMULA is a rule change and needs the Phase 1b
+  discipline — and the 2014-19 holdout is SPENT, so a formula refit cannot be
+  confirmed until fresh seasons exist. The missing-metric behaviour in (a) is
+  arguably a bug fix rather than a tuning change and can be argued on its own
+  merits, but say which you are doing and do not smuggle a refit in behind it.
+  Backtest note: conviction is computed inside `rules.evaluate`, which
+  `backtest/replay.py` calls directly, so any change here silently changes the
+  Phase 1 numbers. Re-run the baseline before and after and report both.
 
 - [x] **Phase 1b — DONE 2026-08-16. Verdict: keep the rule unchanged.**
   46 candidates searched on 2020–23, confirmed once on an untouched 2014–19
@@ -68,7 +449,9 @@ for context. Last updated 2026-08-16.
   aborts rather than starting blind — but the survey scripts themselves are
   still unbudgeted. Either cap them, run them on a no-fixture day, or have them
   check remaining quota first and stop. **Do not run a full coverage sweep on a
-  match day.**
+  match day.** Hardened 2026-08-29 into a standing rule covering every
+  quota-spending test or probe, not just coverage sweeps — see the availability
+  audit at the top of this section.
 
 - [ ] **FIX: a checkpoint is judged once, on whatever stats happen to exist.**
   Queued 2026-08-22, to land before the monitor launches. `done.add(cp)` marks a
@@ -109,6 +492,8 @@ for context. Last updated 2026-08-16.
   confirmed rather than merely searched.
 
 - [ ] **IF LIVE STATS STAY POOR, PRICE UP ANOTHER PROVIDER.** Raised 2026-08-23.
+  **BLOCKED ON the Mon 31 Aug availability audit above** — that item decides
+  whether this one is even the right question. Do not contact vendors first.
   The binding constraint has shifted from the rule to the data. `signalcheck.py`
   now measures the number that decides it: **the minute at which shot statistics
   first appear per fixture**, and the share of fixtures whose stats start after
@@ -141,7 +526,54 @@ for context. Last updated 2026-08-16.
   for >=80% of fixtures. Do NOT run an evaluation sweep on a match day - it
   shares the 7500/day quota with the live monitor.
 
-- [ ] **CHECK MON 24 AUG: is the signal drought real?** Three of the last four
+- [ ] **`NEED` DOES NOT SCALE WITH `n_present`.** Queued 2026-08-30.
+  `rules.py:260` requires `vol_met >= 2 AND mom_met >= 2` no matter how many
+  metrics exist. With ONE metric present the ceiling is 1/1, so the fixture is
+  unfireable at ANY level of dominance. 2026-08-27: 25% of rows had exactly one
+  metric, and 32 evaluations sat at the maximum possible score and could never
+  fire — Brann 0-0 PAOK cp45 scored vol 1/1, mom 1/1, conv 88, price 2.00 inside
+  the band, and was structurally incapable of alerting.
+  The comment at `rules.py:254` says the requirement becomes "NEED of 3" when xG
+  is missing — true for 3 metrics, but n=1 was never considered.
+  **Blocking on one metric is probably CORRECT.** The defect is that it is
+  emergent and unlogged: the console reports it as an ordinary near-miss and
+  `review.py` counts it as a real opportunity, which inflates every
+  "closest to a trigger" table. Make it explicit and label it, then decide.
+  Interacts with the conviction item — a one-metric fixture posting conv 88 is
+  noise in the same place.
+
+- [ ] **OBSERVABILITY: silent skips and unmeasured outages.** Queued 2026-08-30.
+  Three times in a week the answer to "why isn't X being watched?" required
+  reading source: Roma (08-24), Barcelona and Juventus (08-29 — both absent from
+  the log all night, near-certainly under the 1.30 pre-match floor, the shortest
+  `pm=` seen all day being 1.33). `engine.py:380` (no pre-match favourite) and
+  `engine.py:382` (price outside band) both `return` with NO log line, so
+  "excluded by design" is indistinguishable from "broken" or "never seen".
+  One debug line at each site ends it permanently:
+      `Juventus v Parma  skipped: pre-match 1.25 outside 1.30-3.00`
+  Keep this even if the odds filter is dropped — the no-favourite path remains.
+  Also: **an outage silently destroys momentum windows and therefore signals.**
+  On 08-29 Mainz at 69' had vol 2/3, mom 3/3, conv 53, price 2.50, opponent
+  leading nothing — a clean pass on every gate — rejected solely for
+  `no momentum window >= 20min`, caused by the 16:08-16:38 outage. By the time
+  the window rebuilt at 72' momentum had decayed to 1/3. **Half-time makes it
+  worse**: the clock freezes, so windows do not rebuild during the break, and
+  the whole 16:00 block lost cp45 through cp60. Decide whether snapshot history
+  should survive a feed gap, and at minimum log and count what outages cost.
+
+- [ ] **CHECK MON 24 AUG: is the signal drought real?** UPDATED 2026-08-30 —
+  the answer is now clearly YES, and it is getting worse. Lifetime rate is 0.4%
+  (16 signals / 4,446 checkpoints). **The last three days are 5 from 2,855
+  (0.2%), and 08-29 alone was 2 from 1,311 (0.15%) on a 71-fixture card with a
+  clean feed** (stats from 10', 0% of 45' checkpoints lost). So this is no
+  longer explainable as feed lateness or quiet football — on the best-data day
+  in a fortnight the rule fired twice. Both fired signals then LOST (Mainz 0-0,
+  Tottenham 0-2), neither taken. Diagnose against the gate census, not by
+  loosening thresholds: 08-29 rejections were 67% "volume AND momentum short",
+  22% "price outside band", 11% "volume short only" — and separately 35
+  checkpoints died on the strong-evidence gate. Settle the strong-gate item
+  above FIRST; it is the most likely single cause.
+  Original note follows. Three of the last four
   days produced nothing (08-19, 08-21, 08-22); the last three days ran 2 signals
   from 301 checkpoints (0.7%) against a lifetime 2.7%. Some of that is the
   2026-08-21/22 tightening correctly removing fake-momentum signals, some is
