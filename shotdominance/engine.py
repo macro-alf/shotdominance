@@ -74,6 +74,17 @@ class Monitor:
             if not text:
                 continue
 
+            # PRICE QUERY - reply to an alert with ONE number and get the stake
+            # that price implies. The API serves bookmaker quotes; the exchange
+            # price is better and only Alf knows it, so the sizing has to be
+            # askable after the fact. Checked BEFORE stage 2 because a single
+            # number is never a valid "stake and price" pair.
+            if reply_to in self.msg2fid:
+                nums = re.findall(r"\d+(?:[.,]\d+)?", text.replace(",", "."))
+                if len(nums) == 1 and "bet done" not in text.lower():
+                    self.quote(chat, self.msg2fid[reply_to], float(nums[0]))
+                    continue
+
             # stage 2 - we asked for stake and price
             if chat in self.awaiting:
                 nums = re.findall(r"\d+(?:[.,]\d+)?", text.replace(",", "."))
@@ -96,6 +107,46 @@ class Monitor:
                 self.tg.send("Recorded as bet. Now reply with stake and price, "
                              "two numbers: e.g. `650 2.60`")
         self.save()
+
+    def quote(self, chat, fid, price):
+        """Re-size an existing alert at a price Alf actually found.
+
+        The alert's own stake is computed from API-Football's BOOKMAKER quote,
+        which carries overround and is routinely beatable on an exchange. This
+        lets him reply to the alert with the real number and get the stake that
+        price implies, at the SAME conviction. Nothing is recorded - it is a
+        calculator, not a bet.
+        """
+        ctx = self.last_alert.get(fid)
+        if not ctx:
+            self.tg.send("That alert is no longer in memory, so I cannot size "
+                         "it. Reply to a more recent one.")
+            return
+        if not (1.01 <= price <= 1000.0):
+            self.tg.send("Give me a decimal price above 1.01, e.g. `1.95`.")
+            return
+        # exclude this fixture's own reserved exposure so re-quoting the same
+        # alert twice does not eat its own room
+        open_total = sum(v for k, v in self.open_pos.items() if k != fid)
+        sz = sizing.size(price, ctx["conv"], open_total)
+        quoted = ctx.get("price")
+        delta = ("" if quoted is None else
+                 "  (API quoted %.2f, you found %+.1f%%)"
+                 % (quoted, 100.0 * (price / quoted - 1.0)))
+        lines = ["SIZING at %.2f%s" % (price, delta),
+                 ctx["label"], "conviction %.0f/100" % ctx["conv"], "",
+                 "Stake: %.0f EUR   [x%.2f on conviction, bound by %s]"
+                 % (sz["stake"], sz["mult"], sz["bound"]),
+                 "  target-win base %.0f, %.0f%%-Kelly cap %.0f"
+                 % (sz["base"], config.KELLY_FRAC * 100, sz["kelly"]),
+                 "  implied %.1f%% from the price, model assumes %.1f%%"
+                 % (100.0 / price, 100.0 * sz["p"]),
+                 "", "Edge is a model assumption, not a measured quantity."]
+        if chat in self.awaiting:
+            lines += ["", "(still waiting on `stake price` to log the bet)"]
+        self.tg.send("\n".join(lines))
+        print("   >>> QUOTE %s @ %.2f -> stake %.0f (conv %.0f)"
+              % (ctx["label"], price, sz["stake"], ctx["conv"]), flush=True)
 
     # --- blotter ------------------------------------------------------------
     def record_bet(self, fid, stake, price):
@@ -196,7 +247,9 @@ class Monitor:
                   "  " + "\n  ".join(ev.mom_det)]
         for x in ev.extra:
             lines += ["", x]
-        lines += ["", "Reply 'bet done' TO THIS MESSAGE to stop repeats and log it.",
+        lines += ["", "Reply TO THIS MESSAGE with:",
+                  "  a price (e.g. `1.95`) -> stake at the odds YOU can get",
+                  "  'bet done'            -> stop repeats, then log stake+price",
                   "Edge is a model assumption, not a measured quantity."]
         return "\n".join(lines)
 

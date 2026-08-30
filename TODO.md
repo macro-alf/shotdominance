@@ -43,6 +43,34 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [x] **TELEGRAM PRICE QUERY — lands at the 31 AUG launch.** Asked for by Alf
+  2026-08-30, and the natural companion to dropping the price gate: the alert's
+  stake is computed from a BOOKMAKER quote, but the bet goes on an exchange at a
+  price only Alf knows, so the sizing has to be askable after the fact.
+
+  **Reply to any alert with a single number** and the monitor answers with the
+  stake THAT price implies, at the same conviction:
+
+      you  -> 1.95
+      bot  -> SIZING at 1.95  (API quoted 1.73, you found +12.7%)
+              Viking 0-1 Aalesund
+              conviction 71/100
+              Stake: 1368 EUR   [x1.30 on conviction, bound by target-win]
+                target-win base 1053, 65%-Kelly cap 1673
+                implied 51.3% from the price, model assumes 58.2%
+
+  Nothing is recorded — it is a calculator, not a bet. `'bet done'` still logs
+  as before, and a price query while the bot is waiting on `stake price` reminds
+  rather than derailing. Implemented as `Monitor.quote()`; the router checks it
+  BEFORE the stake+price stage because one number is never a valid pair.
+  Exposure from the fixture being quoted is excluded so re-quoting the same
+  alert twice does not eat its own room.
+
+  **Open:** the reply shows `model assumes X%` straight from `_edge_at`, which
+  is Monte-Carlo output on the OLD rules and explicitly not a measured quantity.
+  Displaying it next to a real price makes it look more authoritative than it
+  is. Revisit with the Kelly item.
+
 - [x] **LIVE ODDS GATE DROPPED — lands at the 31 AUG launch.** Alf's call
   2026-08-30: API-Football serves BOOKMAKER quotes with overround, the bet goes
   on an exchange at a better price, so refusing a signal on the bookmaker number
