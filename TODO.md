@@ -43,6 +43,62 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **MON 31 AUG: SHOULD THE WATCHLIST BE EXTENDED, AND TO WHAT?** Asked for
+  by Alf 2026-08-30. **Preliminary answer from data already on disk: there is
+  almost nothing left to add, and the real question is what to REMOVE.**
+
+  **The candidate pool is four leagues.** Re-reading `logs/league_coverage.csv`
+  (the 454-league sweep of 2026-08-16 — already paid for, free to re-read),
+  filtered to leagues we do NOT track that have pre-match odds and >=80% core
+  shot coverage:
+
+      core  xg   country       league                    id
+      100%   0%  France        Ligue 2                    62   <- deliberately dropped
+      100%   0%  Russia        Premier League            235
+       83%  83%  Netherlands   Eerste Divisie             89
+       80%   0%  Spain         Segunda Division          141   <- deliberately dropped
+
+  Nothing else in 454 leagues clears the bar, and **zero cups** reach 90% core
+  shots with odds. Two of the four were dropped on purpose when the list was
+  tightened to Tier 1+2. So the watchlist is effectively **saturated**:
+  extending means accepting materially worse data, not finding hidden gems.
+
+  **Quota is the binding constraint anyway.** 2026-08-29: 71 fixtures ->
+  ~6,429 of 7,500 planned. 2026-08-30: 66 fixtures -> ~6,365 of 7,500. A busy
+  weekend already runs at 85% of the allowance, so there is no room to add a
+  league without taking one out - and `daily.pace()` budgets on every planned
+  fixture, so the cost is real, not notional.
+
+  **THE EVIDENCE POINTS AT SUBTRACTION.** Live in-play availability measured
+  over 26,120 watched polls (14-30 Aug) - not the sweep, which sampled FINAL
+  totals and therefore flatters everything:
+
+      UEFA Europa League       shots  5%   sot 26%   box  0%   xg 0%
+      UEFA Conference League   shots 47%   sot 69%   box 47%   xg 0%
+      UEFA Champions League    shots 99%   sot 99%   box 99%   xg 0%
+
+  Europa League is close to unusable. On European nights these dominate the
+  card (2026-08-27: 70 of 74 fixtures were UEFA, 0 signals from 990 checkpoints,
+  57% of 45' checkpoints unjudgeable). **Dropping Europa League and Conference
+  League would free the quota that any addition needs, and remove the worst
+  data we carry.** Champions League is fine on core shots and worth keeping.
+
+  **What to actually decide, in order:**
+  - **a.** Drop UEFA Europa League and/or Conference League? Measure what they
+    have ever contributed: signals fired and checkpoints judged, per
+    competition, from `logs/monitor-*.log`. Zero quota.
+  - **b.** Only then, spend the freed budget: Eerste Divisie is the only genuine
+    addition (83% core AND 83% xG, the sole candidate with xG at all).
+    Ligue 2 and Segunda were dropped for a reason - re-read that reason before
+    re-adding, and note both are 0% xG so they would run permanently on three
+    metrics. Russia: check market access and exchange liquidity before anything
+    else, that may settle it.
+  - **c.** The sweep is two weeks old and measures FINAL-total availability, not
+    live. Any candidate must be re-checked against the LIVE measure before
+    adoption - see the availability audit above, which is the right instrument.
+  **Do NOT run a fresh 686-competition sweep to answer this.** That is what
+  caused the 2026-08-16 outage; the existing CSV answers it for free.
+
 - [x] **TELEGRAM PRICE QUERY — lands at the 31 AUG launch.** Asked for by Alf
   2026-08-30, and the natural companion to dropping the price gate: the alert's
   stake is computed from a BOOKMAKER quote, but the bet goes on an exchange at a
