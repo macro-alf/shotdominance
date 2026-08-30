@@ -43,6 +43,52 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **MON 31 AUG: A MISSING PRICE IS TREATED AS MORE PERMISSIVE THAN A BAD
+  ONE.** Found live 2026-08-30. `engine.py:452` reads
+  `price_ok = price is None or (PRICE_FLOOR <= price <= PRICE_CEIL)`, so the
+  band is SKIPPED when the feed drops the price. A fixture we can see is quoted
+  far below the floor therefore becomes alertable the moment its quote vanishes.
+
+  **Caught red-handed.** Viking 0-1 Aalesund, cp45, four consecutive polls,
+  IDENTICAL evidence (vol 2/4, mom 3/4, conv 71) - only the price moved:
+      45'  conv 71  odds 1.40   blocked: price outside 1.75-4.00
+      45'  conv 71  odds 1.44   blocked
+      45'  conv 71  odds 1.44   blocked
+      45'  conv 71  odds n/a    -> SIGNAL FIRED, stake 0
+  A missing price is strictly LESS information than a bad one, and it produced
+  the more permissive outcome. The alert reached Telegram with no stake, on a
+  fixture last quoted 1.44.
+
+  **Proposed fix:** carry the last known price forward for the BAND CHECK. The
+  engine already carries prices forward <=180s elsewhere (and stats <=300s), so
+  the machinery exists - the band check just is not using it. A fixture quoted
+  1.44 three polls ago should stay blocked, not become alertable. Only a fixture
+  that has NEVER had a price in this match should take the skip path.
+  Related and already landing tomorrow: a stake-0 alert no longer spends its
+  checkpoint (`engine.py`, committed to the working tree 2026-08-30).
+
+  **28% of checkpoint evaluations have no live price** (2,295 rows, 28-30 Aug),
+  so this is not a corner case.
+
+- [ ] **MON 31 AUG: IS THE ODDS-FLOOR DROP ACTUALLY REALISABLE?** Raised by the
+  same day's live evidence. The floor drop to 1.01 is measured right on
+  PREDICTION (+15.06pp stratified on the 116 recovered signals) but Phase 1
+  carries NO in-play prices, so it could not see whether those signals are
+  BETTABLE. Three instances on the first afternoon say maybe not:
+      Feyenoord (pm 1.14)  conv 85, vol 4/4 mom 4/4  -> odds n/a, stake 0
+                           peaked conv 90 at 50' with the price at 1.20
+      Viking    (pm 1.20)  conv 71, vol 3/4 mom 4/4  -> quoted 1.40-1.53 all match
+      Man Utd   (pm 1.33)  live 1.36 at 20'
+  **The hypothesis to test: short pre-match favourites are quoted short IN PLAY
+  even while losing and dominating, so the pre-match floor and the live 1.75
+  floor were doing the same job.** If true, the recovered population is largely
+  unbettable and the honest fix is a LIVE-price-aware watch decision, not a
+  pre-match one - watch them, but expect the live band to reject most.
+  **Measure from logs, zero quota:** `odds=n/a` rate and out-of-band rate, split
+  by pre-match price bucket, over the next week. Do NOT revert the floor on one
+  afternoon of evidence - the prediction result stands and three fixtures is
+  nothing.
+
 - [x] **MEASURED THE STRONG-EVIDENCE GATE — DONE 2026-08-30. VERDICT: KEEP IT.**
   The live-log evidence below suggested the gate was over-tightening. **It is
   not.** Measured on 2020-23, 5 leagues, 26,530 eligible checkpoints, via a new

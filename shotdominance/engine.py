@@ -475,7 +475,17 @@ class Monitor:
         if not fire:
             print("       cp%d %s" % (cp, reason), flush=True)
             return
-        done.add(cp)          # fired - spend it, even if grace had time left
+        # Spend the checkpoint - but NOT if the alert was unsizable. With no live
+        # price the signal still fires (price_ok is True when price is None) and
+        # reaches Telegram with stake 0, which is information but not a bet. If
+        # that consumed the checkpoint, a price appearing seconds later would
+        # have nothing left to fire on. Feyenoord 0-1 ADO Den Haag (2026-08-30)
+        # fired at 45' on conv 85 / vol 4/4 / mom 4/4 with odds=n/a, and by 50'
+        # was conv 90 with a price - but cp45 was already gone. The grace window
+        # still closes it via `expired` above, so this cannot stay open forever,
+        # and _fire_decision's rising-only rule stops it nagging.
+        if price is not None:
+            done.add(cp)
 
         open_total = sum(self.open_pos.values())
         sz = (sizing.size(price, ev.conv, open_total) if price
