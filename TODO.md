@@ -43,8 +43,38 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [x] **LIVE ODDS GATE DROPPED — lands at the 31 AUG launch.** Alf's call
+  2026-08-30: API-Football serves BOOKMAKER quotes with overround, the bet goes
+  on an exchange at a better price, so refusing a signal on the bookmaker number
+  rejects bets that are perfectly available. Viking 0-1 Aalesund the same
+  afternoon: vol 3/4, mom 4/4, xG 1.35 v 0.37, shots 14-5 — refused at **1.73,
+  two cents under the floor**, on a price Alf could beat.
+  `PRICE_GATE=0` (config) now makes the band advisory rather than a veto.
+  Measured scope: over 28-30 Aug exactly **24 checkpoints were blocked by price
+  alone, ALL of them below 1.75** — roughly 8 extra alerts/day, no ceiling cases.
+
+  **The sizing trap this opens, and how it is closed.** `base = TARGET_WIN /
+  (price - 1)`, so a 1.20 quote implies a 5000 base and would have suggested the
+  10%-of-bankroll cap — **2000 EUR on a 1.20 shot**. `SIZE_PRICE_CLAMP=1` clamps
+  the SIZING price into the band while leaving the signal free: a 1.20 quote
+  sizes as if 1.75 (1417 EUR at conv 71), a 6.00 quote as if 4.00. The Telegram
+  alert prints the real quote plus an explicit warning to beat it or skip.
+
+  **Still open, and it now matters more:**
+  - **a.** The blotter records the price ALF ACTUALLY GOT, so it is the only
+    evidence of how far exchange prices beat the API. Once there are enough
+    settled bets, compare `price_taken` against `alert_price` and quantify the
+    gap. If it is reliably positive, the clamp floor should move with it.
+  - **b.** Phase 2 still needs real in-play prices. Dropping the gate removes a
+    filter that was standing in for a price model; nothing replaces it yet.
+  - **c.** With no price veto, a signal on a genuinely unbackable market now
+    reaches Telegram. Watch for alerts nobody can act on and count them.
+
 - [ ] **MON 31 AUG: A MISSING PRICE IS TREATED AS MORE PERMISSIVE THAN A BAD
-  ONE.** Found live 2026-08-30. `engine.py:452` reads
+  ONE.** NOTE: dropping the price gate above largely dissolves this — with no
+  veto, "missing" and "bad" both fire. What survives is the SIZING question:
+  a missing price still yields stake 0 while a bad one now sizes off the clamp.
+  Decide whether a missing price should also size off `PRICE_FLOOR`. Found live 2026-08-30. `engine.py:452` reads
   `price_ok = price is None or (PRICE_FLOOR <= price <= PRICE_CEIL)`, so the
   band is SKIPPED when the feed drops the price. A fixture we can see is quoted
   far below the floor therefore becomes alertable the moment its quote vanishes.

@@ -87,10 +87,23 @@ real result.
   Both changes are inert in the backtest — reconstructed history always yields a
   full 30-minute window (verified: 1,680 evaluations, all win=30) — so the
   Phase 1 result still describes the live rule.
-- **Price:** the signal price (win or DC) must be **1.75–4.00**; if no live price
-  the condition is skipped and it still alerts. The last live price is **carried
-  forward ≤180s** across blocked/suspended polls. Empty **stats** are likewise
-  carried ≤300s so a feed gap isn't read as zero.
+- **Price: the band NO LONGER VETOES a signal** (`PRICE_GATE=0`, from
+  2026-08-31). API-Football serves **bookmaker** quotes carrying overround; the
+  bet is placed on an **exchange** at a better price, so refusing on the
+  bookmaker number rejects bets that are actually available. Viking 0-1 Aalesund
+  (2026-08-30) was refused at **1.73** — two cents under the floor — while
+  showing vol 3/4, mom 4/4 and xG 1.35 v 0.37. Over 28–30 Aug exactly **24
+  checkpoints were blocked by price alone, all of them below 1.75**.
+  The band survives in two roles: it **bounds sizing**, and it is **reported**.
+  - **Sizing is clamped into 1.75–4.00** (`SIZE_PRICE_CLAMP=1`). `base =
+    TARGET_WIN/(price−1)`, so a 1.20 quote implies a 5,000 base and would
+    suggest the per-bet cap — €2,000 on a 1.20 shot. A 1.20 quote now sizes as
+    if 1.75; a 6.00 quote as if 4.00. The alert names both numbers and warns to
+    beat the quote or skip.
+  - If no live price exists the signal still alerts, with **stake 0**.
+  The last live price is **carried forward ≤180s** across blocked/suspended
+  polls. Empty **stats** are likewise carried ≤300s so a feed gap isn't read as
+  zero.
 - **Conviction (0–100):** `0.55·volume + 0.30·momentum + 0.15·dominance` (ratios
   capped at 2×), then **× time_factor**. Time factor is **boost-only**
   (`TIME_WEIGHT=0.5`, `TIME_PIVOT_MIN=75`): ×1.33 at 45' → ×1.00 at 75' — rewards

@@ -164,6 +164,26 @@ TIME_PIVOT_MIN = _f("TIME_PIVOT_MIN", 75.0)  # minute where the factor is neutra
 PRICE_FLOOR = _f("PRICE_FLOOR", 1.75)
 PRICE_CEIL = _f("PRICE_CEIL", 4.00)
 
+# PRICE_GATE OFF from 2026-08-31, on Alf's instruction. API-Football's live
+# prices are BOOKMAKER quotes carrying overround; the bet is actually placed on
+# an exchange, where the price is routinely better. Blocking on the bookmaker
+# quote therefore rejects signals that are perfectly bettable in practice -
+# Viking 0-1 Aalesund (2026-08-30) sat at vol 3/4, mom 4/4, xG 1.35 v 0.37 and
+# was refused at 1.73, two cents under the floor, on a price Alf could beat.
+# Over 28-30 Aug exactly 24 checkpoints were blocked by price alone and ALL of
+# them were below 1.75, so this is a floor problem, not a ceiling one.
+#
+# The band is NOT deleted: it still bounds SIZING (see below) and is still
+# reported in the alert so the quoted price is visible as a number to beat.
+PRICE_GATE = _i("PRICE_GATE", 0) != 0
+
+# Sizing must never be computed off an out-of-band quote. base = TARGET_WIN /
+# (price - 1), so a 1.20 quote implies a 5000 base and would suggest the
+# 10%-of-bankroll cap (2000 EUR) on a price nobody should take. With the gate
+# off, the sizing price is CLAMPED into the band: a 1.20 quote sizes as if 1.75,
+# a 6.00 quote as if 4.00. The alert says which price was used.
+SIZE_PRICE_CLAMP = _i("SIZE_PRICE_CLAMP", 1) != 0
+
 # --- sizing -----------------------------------------------------------------
 BANKROLL = _f("BANKROLL", 20000.0)
 COMMISSION = _f("COMMISSION", 0.03)

@@ -172,8 +172,15 @@ class Monitor:
             lines += ["Price: NOT AVAILABLE - check manually", "",
                       "Stake: cannot size without a price"]
         else:
+            band = "" if config.PRICE_FLOOR <= price <= config.PRICE_CEIL else (
+                "  ** BOOKMAKER QUOTE IS OUTSIDE %.2f-%.2f - the stake below is "
+                "sized at the nearest in-band price. BEAT THIS NUMBER on the "
+                "exchange or skip it. **" % (config.PRICE_FLOOR, config.PRICE_CEIL))
             lines += ["Price: %.2f  (%s; pre-match fav %.2f)"
-                      % (price, price_tag, pm), "",
+                      % (price, price_tag, pm)]
+            if band:
+                lines += [band]
+            lines += ["",
                       "Stake: %.0f EUR   [x%.2f on conviction, bound by %s]"
                       % (sz["stake"], sz["mult"], sz["bound"]),
                       "  target-win base %.0f, half-Kelly cap %.0f"
@@ -449,7 +456,10 @@ class Monitor:
         if expired:
             done.add(cp)
 
-        price_ok = price is None or (config.PRICE_FLOOR <= price <= config.PRICE_CEIL)
+        in_band = price is None or (config.PRICE_FLOOR <= price <= config.PRICE_CEIL)
+        # With PRICE_GATE off the quoted price no longer vetoes a signal - it is
+        # a bookmaker number and the bet goes on an exchange at a better one.
+        price_ok = in_band or not config.PRICE_GATE
         if fid in self.acked:
             print("       cp%d: signal suppressed - bet already logged" % cp,
                   flush=True)
@@ -488,9 +498,20 @@ class Monitor:
             done.add(cp)
 
         open_total = sum(self.open_pos.values())
-        sz = (sizing.size(price, ev.conv, open_total) if price
+        # Never size off an out-of-band quote: base = TARGET_WIN/(price-1), so a
+        # 1.20 would imply a 5000 base and suggest the per-bet cap on a price
+        # nobody should take. Clamp into the band instead - the alert reports
+        # both the quote and the price the stake was computed at.
+        size_price, clamped = price, None
+        if price is not None and not in_band and config.SIZE_PRICE_CLAMP:
+            size_price = min(max(price, config.PRICE_FLOOR), config.PRICE_CEIL)
+            clamped = size_price
+        sz = (sizing.size(size_price, ev.conv, open_total) if size_price
               else dict(stake=0.0, base=0.0, mult=1.0, want=0.0, kelly=0.0,
                         bound="no price"))
+        if clamped is not None:
+            sz["bound"] = "%s, sized at %.2f (quote %.2f out of band)" % (
+                sz["bound"], clamped, price)
         ctx = dict(label=label, league=lg.get("name"), minute=minute,
                    fav=fav_name, side=side, score="%d-%d" % (hs, as_),
                    conv=ev.conv, price=price, market=pinfo["market"],
