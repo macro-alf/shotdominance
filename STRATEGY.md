@@ -147,11 +147,23 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   season start) — verify against completed seasons.
 
 ## Operations
-- Runs via Windows scheduled task **InplayMonitor** (daily **09:45**, StartIn = repo,
-  `MONITOR_SCRIPT=monitor.py`, `END_ACTION=sleep`). `daily.py` schedules around
-  kickoffs, launches `monitor.py`, runs `endday.py`, sleeps the PC; the 09:45
-  wake restarts the cycle. **09:45 because this PC is not reliably awake before
-  09:30** — earliest kickoffs in the watchlist are ~12:15, so the lead is ample.
+- Runs via Windows scheduled task **InplayMonitor**, StartIn = repo,
+  `MONITOR_SCRIPT=monitor.py`, `END_ACTION=sleep`. `daily.py` schedules around
+  kickoffs, launches `monitor.py`, runs `endday.py`, sleeps the PC; the next
+  wake restarts the cycle.
+  **Two weekly triggers since 2026-08-31:**
+  - **Mon–Fri 13:00** — weekday cards are evening-only (31 Aug: 16 fixtures,
+    first kickoff 18:30), so waking at 09:45 burned five hours of uptime for
+    nothing.
+  - **Sat–Sun 09:45** — weekend cards start ~12:15, and 09:45 is used because
+    this PC is not reliably awake before 09:30.
+  **The task time must stay earlier than (first kickoff − 15 min)**, or
+  `daily.py` logs "first kickoff already passed — starting now" and the early
+  fixtures lose their snapshot history. 13:00 is safe for a normal weekday but
+  would NOT be for a midweek afternoon card.
+  **`WATCHDOG_ACTIVE_FROM` (10) now conflicts with the weekday start** — see the
+  watchdog item in `TODO.md`; it must become day-aware before the watchdog is
+  revived, or it will restart the monitor at 10:05 and undo the 13:00 schedule.
 - **Secrets** are Windows **User env vars** (`APIFOOTBALL_KEY`,
   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) — never in the repo; the Claude Bash
   tool doesn't inherit them (hydrate from User scope when launching by hand).

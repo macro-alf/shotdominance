@@ -96,6 +96,18 @@ for context. Last updated 2026-08-29.
   The Task Scheduler operational log appears to be DISABLED on this machine —
   enable it, or this stays unprovable.
 
+  **NEW CONFLICT, created 2026-08-31 — read before reviving the watchdog.**
+  The monitor now starts **13:00 on weekdays, 09:45 at weekends**, but
+  `WATCHDOG_ACTIVE_FROM` is a single value of **10**. On a weekday the watchdog
+  would therefore be active from 10:00 while the supervisor is not due until
+  13:00, see yesterday's `finished` heartbeat during its active window, hit the
+  `"supervisor never started today"` branch and **restart `InplayMonitor` at
+  10:05 — defeating the 13:00 schedule entirely.** It cannot bite today only
+  because the watchdog is dead. **Whoever fixes it MUST make the active window
+  day-aware** (13:00+ Mon-Fri, 10:00+ Sat-Sun) or the fix will silently undo
+  the schedule. Do not simply set `WATCHDOG_ACTIVE_FROM=13`: that blinds it
+  from 09:45 to 13:00 at weekends, which are the busiest days.
+
   **Also fix the missed-occurrence roll-forward.** `StartWhenAvailable` is True
   but the 08-30 09:45 occurrence was skipped rather than run late. Whatever the
   watchdog does, the monitor task itself should not silently give up on a day.

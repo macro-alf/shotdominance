@@ -315,6 +315,10 @@ LEAGUES = [
     ("Czech-Republic", "Czech Liga"),
     ("Germany", "Bundesliga"),
     ("France", "Ligue 1"),
+    # Added 2026-08-31. The ONLY untracked league in the 454-league sweep with
+    # both decent core shots (83%) AND xG (83%) - every other candidate was 0%
+    # xG. See the watchlist item in TODO.md: the list is otherwise saturated.
+    ("Netherlands", "Eerste Divisie"),
 ]
 
 # Every competition pinned to its current feed id (resolved 2026-08-16) so

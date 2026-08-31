@@ -27,7 +27,15 @@ def favourite(odds_h, odds_a):
     Mirrors the live gate: the shorter price is the favourite, and it must sit
     in MIN_ODDS..MAX_ODDS.
     """
-    side, price = ("h", odds_h) if odds_h <= odds_a else ("a", odds_a)
+    # BACKTEST-ONLY switch. PICK_SIDE=under evaluates the LONGER-priced side
+    # instead, so "is the thesis really about the FAVOURITE, or just about a
+    # side dominating and not winning?" can be answered by running both arms.
+    # Live behaviour is untouched - the engine has its own selection.
+    import os
+    if os.getenv("PICK_SIDE", "fav") == "under":
+        side, price = ("h", odds_h) if odds_h > odds_a else ("a", odds_a)
+    else:
+        side, price = ("h", odds_h) if odds_h <= odds_a else ("a", odds_a)
     if not (config.MIN_ODDS <= price <= config.MAX_ODDS):
         return None
     return side, price
