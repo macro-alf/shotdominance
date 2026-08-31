@@ -148,7 +148,23 @@ CONV_CAP = _f("CONV_CAP", 2.0)
 # signals/season of breadth. Searched on 2020-23, NOT confirmed - the 2014-19
 # holdout is spent. Revisit against real prices in Phase 2, where the
 # breadth-versus-edge trade actually gets settled.
-CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 65.0)
+# REVISED 65 -> 60 on 2026-08-31, BEFORE 65 ever ran live. The backtest floor
+# was calibrated on a conviction distribution the live system does not produce:
+# the backtest always has four metrics, while live xG is missing 45% of the
+# time and windows are often shortened, both of which depress the score. Every
+# signal the monitor has ever fired (33, 14-30 Aug) scored:
+#   29 35 36 37 38 46 49 52 53 53 54 58 58 58 59 60 60 61 61 62 62 63 63
+#   66 69 70 71 74 74 76 78 85 85
+# A 65 floor cuts 23 of 33 (70%), where the backtest predicted 41%. It would
+# also have cut TWO of the three winning bets in the blotter (Nordsjaelland
+# 57.8, Milan 62.3), turning +1990.87 on 5 settled bets into +59.50 on 2.
+# That is n=5 and proves nothing on its own - the backtest evidence is far
+# stronger - but "removes 70% of live signals" is a deployment fact the
+# measurement could not see. 60 keeps the direction the evidence supports
+# (>=60 lifts +8.02pp vs +8.20pp at 50, and 54.2%/+9.34pp at 65) while cutting
+# 45% rather than 70%. Re-derive from the LIVE distribution once there are
+# enough live signals to do it honestly.
+CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 60.0)
 
 # time-remaining factor. A dominant favourite that still needs a goal is a better
 # bet earlier in the match - more time to convert the dominance. Conviction is

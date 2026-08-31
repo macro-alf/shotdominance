@@ -3,6 +3,68 @@
 Pending work explored but not yet done, roughly by priority. See `STRATEGY.md`
 for context. Last updated 2026-08-29.
 
+## MOST URGENT — MOVE THE MONITOR TO THE LAPTOP (Alf abroad 10 days)
+
+- [ ] **RUN THE MONITOR FROM THE LAPTOP.** Raised 2026-08-31. This PC cannot be
+  left on. **Deadline is departure.**
+
+  **First, the reassuring part: the monitor does NOT need Claude Code.**
+  It is plain Python driven by Windows Task Scheduler — `daily.py` launches
+  `monitor.py`, which talks to API-Football and Telegram. Claude Code is only
+  the tool used to WORK on it. Nothing about signals, alerts or the blotter
+  depends on a Claude session being open, on this machine or any other.
+  Claude Code on the laptop is a SEPARATE question: sign in with the same
+  account as normal and it works. What does NOT transfer is this session's
+  context and its background watchers — those are per-session and will need
+  re-creating if you want live commentary while away.
+
+  **Checklist for the laptop:**
+  1. Python 3.10 (this PC runs 3.10.11 at
+     `%LOCALAPPDATA%\Programs\Python\Python310\python.exe`).
+  2. The repo. It already lives in **OneDrive**
+     (`C:\Users\Alf\OneDrive\Documents\Local Repos\shotdominance`) so it will
+     sync — but WAIT FOR THE SYNC TO FINISH before starting anything.
+  3. The three secrets as **User** environment variables: `APIFOOTBALL_KEY`,
+     `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. They are NOT in the repo and will
+     NOT sync. Copy them across by hand from this PC's User env vars.
+  4. Register `InplayMonitor` (daily 09:45, `python daily.py`, StartIn = repo)
+     and `InplayWatchdog` (daily 10:05, repeat 15 min) — but see the watchdog
+     item below; it is currently dead, so do not rely on it.
+  5. **Task settings that matter on a LAPTOP and default the wrong way:**
+     `DisallowStartIfOnBatteries = False` and `StopIfGoingOnBatteries = False`
+     (both default to TRUE on a new task — the task simply will not run on
+     battery). Also `StartWhenAvailable = True`, `WakeToRun = True`,
+     `ExecutionTimeLimit = PT20H`. Principal is `LogonType Interactive`, so the
+     laptop must be LOGGED IN, not just powered on.
+  6. Disable sleep/hibernate on AC, or the 09:45 start is missed exactly as it
+     was on 2026-08-30.
+
+  **THE TRAPS, in order of how badly they bite:**
+  - **TIMEZONE. This is the big one.** `daily.py` queries fixtures with
+    `TZNAME=Europe/Rome` but schedules against the LOCAL machine clock, and
+    picks the fixture date from `datetime.now()`. The task also fires at
+    *local* 09:45. Abroad, local 09:45 could be well past the first kickoff, and
+    the "today" date could be the wrong day entirely.
+    **Simplest safe fix: set the laptop's Windows timezone to W. Europe /
+    Europe-Rome and leave it there for the trip.** Everything then behaves
+    exactly as it does now. Changing `TZNAME` alone does NOT fix it.
+  - **NEVER RUN BOTH MACHINES.** Telegram `getUpdates` is single-consumer, so
+    two instances fight over replies and "bet done" can land nowhere. The
+    7500/day API quota is also shared per key. Disable the tasks on this PC
+    before enabling them on the laptop.
+  - **OneDrive will sync `blotter.csv` and `state3.json`.** They are gitignored,
+    so git does not carry them — OneDrive does. That is convenient (state
+    follows you) and dangerous: `blotter.write()` merges with what is on disk,
+    so a half-synced or conflict-copied blotter can lose a settled bet. Confirm
+    OneDrive is fully synced before the first laptop run, and again before
+    switching back.
+  - The watchdog is dead on this PC and copying the task will copy the problem.
+
+  **Verify on the laptop before leaving:** run `python daily.py --dry-run`
+  (costs 2 requests) and confirm it lists today's fixtures with sane kickoff
+  times in the expected clock. That single command exercises the key, the
+  network, the timezone and the league resolution at once.
+
 ## URGENT — the safety net is not working
 
 - [ ] **THE WATCHDOG IS DEAD. FIX IT BEFORE ANYTHING ELSE.** Proven 2026-08-30.
