@@ -117,6 +117,124 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **SAT 12 SEP: STRIP PENALTIES OUT OF THE STATS - SCORED AND MISSED.**
+  Asked for by Alf 2026-09-12, off a live case.
+
+  **What happened.** Genoa 0-1 Frosinone, one poll apart, nothing else moving:
+
+      45'  xg=0.60[0.70]/0.37  shots=8[10]/4    box=6[5]/1   vol=1/4  conv=56
+      46'  xg=1.38[0.71]/0.37  shots=9[10.1]/4  box=7[5.1]/1 vol=2/4  conv=82
+
+  A penalty. +0.78 xG in sixty seconds - MORE THAN THE ENTIRE 45' xG THRESHOLD
+  of 0.70 - taking xG from 0.86x the bar to 1.94x, hard against the 2x cap the
+  conviction formula allows. That single event flipped xG from unrealised to
+  realised and dragged conviction from 56 to 82.
+
+  **Why it is wrong.** The thesis is territorial dominance: a side that SHOULD
+  win is not winning, evidenced by sustained shot superiority. A penalty is a
+  single binary event awarded for one infringement. It says nothing about
+  territorial control, and it contaminates THREE of the four metrics at once -
+  xG (+0.78), sot (if on target), and box (a penalty is inside the box by
+  definition). A missed penalty is worse still: it adds the same evidence of
+  "dominance" while the score stays put, which is exactly the state the rule is
+  hunting for.
+
+  **Wanted:** exclude penalty events - scored AND missed - from xg, shots, sot
+  and box, for both sides.
+
+  **Known complications, in order of how much they hurt:**
+  - **Quota.** `/fixtures/statistics` does not break out penalties; that needs
+    `/fixtures/events` (type=Goal detail=Normal/Penalty, plus Missed Penalty).
+    That is an EXTRA call per fixture. At peak 33 overlapping on a Saturday
+    against a 7500/day budget already planned at 6723, one extra call per
+    fixture per poll is NOT affordable. Fetch events only at checkpoints, or
+    only once a penalty is suspected (an xG jump > ~0.7 between polls is a
+    near-perfect detector and costs nothing).
+  - The feed's xG almost certainly INCLUDES penalties, so subtraction is
+    needed, not a flag. ~0.76-0.79 per penalty is the standard value; better to
+    take the actual figure from the event if the feed gives one.
+  - Opponent penalties must be stripped too, or the dominance ratio skews the
+    other way.
+  - Historical: the backtest (Understat) has penalty flags per shot, so the
+    same exclusion can and should be applied there before any comparison.
+
+  **Cheap first step, no quota cost:** log a marker whenever a fixture's xG
+  jumps more than 0.7 between consecutive polls. That measures how often this
+  actually bites before anyone spends requests fixing it.
+
+
+- [ ] **SUN 6 SEP: A RE-FIRED ALERT EATS ITS OWN EXPOSURE ROOM AND SHRINKS.**
+  Found live 2026-09-06. Modena 0-1 Avellino alerted twice in five minutes:
+
+      45'  conv  85  ->  stake 2000
+      50'  conv 100  ->  stake 1000
+
+  Higher conviction, HALF the stake. The first alert reserved 2000 of the 3000
+  total exposure room (`MAX_TOTAL_PCT` 0.15 x 20000), and when the SAME fixture
+  re-fired, its own reservation was counted against it.
+
+  **The fix already exists five hundred lines away.** The Telegram
+  reply-with-a-price path does it correctly:
+
+      engine.py:130   open_total = sum(v for k, v in self.open_pos.items() if k != fid)
+                      # "exclude this fixture's own reserved exposure so
+                      #  re-quoting the same alert twice does not eat its own room"
+
+  The alert path does not:
+
+      engine.py:553   open_total = sum(self.open_pos.values())
+
+  Same reasoning applies: you place ONE bet on Modena, not two, so the two
+  alerts are alternatives and must not be summed. Mirror line 130 at line 553.
+
+  **This BLOCKS the re-firing item above.** If a strong signal keeps alerting
+  while its own reservation accumulates against it, the suggested stake decays
+  2000 -> 1000 -> 0 and the system reads as losing confidence exactly when
+  conviction is highest. The two changes must land together, and the test should
+  pin a re-fire at equal-or-higher conviction producing an equal-or-higher stake.
+
+  **Related, NOT a defect:** the same alerts logged `odds=1.50` / `1.53` while
+  sizing at 1.75. That is `SIZE_PRICE_CLAMP` doing its job (a bad quote must not
+  inflate a stake). Worth a separate look only because the alert then suggests a
+  stake computed at a price better than the one actually on offer.
+
+
+- [ ] **SUN 6 SEP: A STRONG SIGNAL SHOULD KEEP ALERTING, NOT GO SILENT.** Asked
+  for by Alf 2026-09-06. Today the firing policy is: fire once above
+  `CONV_FIRE_MIN`, then **re-fire only when conviction exceeds the highest
+  already alerted for that fixture** (`engine._fire_decision`, pinned by
+  `tests/test_engine.py::test_fire_decision_only_repeats_on_a_new_high`).
+
+  **The consequence Alf wants changed.** A fixture that alerts at conv 90 and
+  then sits at 85 for the next half hour is SILENT for that whole period, even
+  though 85 is a strong signal by every other measure. The rule was written to
+  stop a DETERIORATING situation from nagging, and it does that -- but it also
+  mutes a situation that is merely no longer setting personal bests. If the
+  first alert is missed (phone down, in a meeting), there is no second chance
+  while the signal remains excellent.
+
+  **Wanted:** high conviction keeps firing while it stays high.
+
+  **Design constraints, so this does not become spam:**
+  - There is ALREADY a mute: replying "bet done" stops alerts for that fixture
+    entirely. So repeated alerting is recoverable by the user, which is the main
+    argument that this is safe to loosen.
+  - Checkpoints are 45..75, so the natural cadence is at most 7 alerts per
+    fixture, not one per poll. Re-firing at every checkpoint while conviction
+    stays above a HIGH bar is bounded and probably sufficient.
+  - Options, roughly in order of how much they change: (a) re-fire whenever
+    conv >= a new `CONV_ALWAYS_FIRE` (say 80) regardless of previous high;
+    (b) re-fire when conv >= previous_high - tolerance, so small dips do not
+    mute it; (c) re-fire on every checkpoint above `CONV_FIRE_MIN` and rely on
+    "bet done" alone. (a) is the smallest change that gets what was asked.
+  - Whatever is chosen, the alert text should say it is a REPEAT and show the
+    conviction trend, or a repeat is indistinguishable from a new signal.
+
+  **Do not lose the thing the current rule protects:** a fixture whose
+  conviction is falling should still not re-alert. Falling and high are
+  different states and the fix must keep telling them apart.
+
+
 - [ ] **MON 31 AUG: SHOULD THE WATCHLIST BE EXTENDED, AND TO WHAT?** Asked for
   by Alf 2026-08-30. **Preliminary answer from data already on disk: there is
   almost nothing left to add, and the real question is what to REMOVE.**

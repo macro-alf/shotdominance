@@ -9,7 +9,37 @@ Division, Super Lig). Keep it UTF-8. The old build lost two competitions when a
 `Get-Content | Out-File` round-trip on Windows PowerShell 5.1 mangled the
 accents; PINNED_IDS below is a second line of defence for exactly that.
 """
+import io
 import os
+
+
+def _load_dotenv():
+    """Populate os.environ from a .env file at the repo root.
+
+    Everything below reads through os.getenv, and nothing else populates it, so
+    without this a saved .env is silently inert: the monitor would start with an
+    empty API key and fail at the first request. Real environment variables win
+    (setdefault), so an explicit export -- or daily.py setting POLL_SECONDS --
+    is never overwritten by the file. Absent or unreadable .env is not an error;
+    exporting the variables by hand stays a supported way to run.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        with io.open(os.path.join(root, ".env"), encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        value = value.strip().strip('"').strip("'")
+        if value:
+            os.environ.setdefault(name.strip(), value)
+
+
+_load_dotenv()
 
 
 def _f(name, default):
@@ -164,7 +194,19 @@ CONV_CAP = _f("CONV_CAP", 2.0)
 # (>=60 lifts +8.02pp vs +8.20pp at 50, and 54.2%/+9.34pp at 65) while cutting
 # 45% rather than 70%. Re-derive from the LIVE distribution once there are
 # enough live signals to do it honestly.
-CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 60.0)
+CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 70.0)
+# RAISED 60 -> 70 on 2026-09-07, on Alf's instruction, to give the WEAKEST
+# signal that can fire a stake worth placing. Under half-Kelly with
+# conviction inside p, conviction 69.7 at odds 2.00 sizes to exactly 1000;
+# below that the model sees so little edge that stakes fall away to nothing
+# (conv 60 at 2.00 sized 256, and conv 60 at 1.75 or 4.00 sized ZERO).
+# The alternative considered and REJECTED was anchoring conv 60 at a 1000
+# stake by scaling: that needs x3.91, i.e. an effective Kelly fraction of
+# 1.95 - about twice full Kelly, the point where expected log growth goes
+# to zero. Raising the floor buys the same minimum stake by not firing the
+# bets that do not deserve it. Cost: on 2026-09-06, four of the six alerts
+# fired below 70 (Hearts 61, Gil Vicente 71/91/92, Modena 85/100), so
+# expect materially fewer signals.
 
 # time-remaining factor. A dominant favourite that still needs a goal is a better
 # bet earlier in the match - more time to convert the dominance. Conviction is
@@ -203,10 +245,48 @@ SIZE_PRICE_CLAMP = _i("SIZE_PRICE_CLAMP", 1) != 0
 # --- sizing -----------------------------------------------------------------
 BANKROLL = _f("BANKROLL", 20000.0)
 COMMISSION = _f("COMMISSION", 0.03)
-KELLY_FRAC = _f("KELLY_FRAC", 0.65)      # Kelly is the ceiling, not the target
+KELLY_FRAC = _f("KELLY_FRAC", 0.50)      # Kelly IS the stake now, not a ceiling.
+# Lowered 0.65 -> 0.50 on 2026-09-06: the edge is modelled, not measured, and
+# fractional Kelly is the hedge against a mis-estimated edge. Overbetting a
+# wrong edge is punished far harder than underbetting a right one.
 MAX_STAKE_PCT = _f("MAX_STAKE_PCT", 0.10)   # per-bet cap, fraction of bankroll
 MAX_TOTAL_PCT = _f("MAX_TOTAL_PCT", 0.15)   # total open exposure cap
 TARGET_WIN = _f("TARGET_WIN", 1000.0)    # base stake targets this profit
+
+# --- conviction -> win-probability tilt -------------------------------------
+# Conviction now enters the Kelly probability directly instead of scaling a
+# separate target-win base. Fitted 2026-09-06 by OLS of won ~ conviction over
+# 424 backtest signals (2020-23, five leagues, cp<=75, conv>=60):
+#     slope +0.00377 win-probability per conviction point
+#     conv 60 -> .494    conv 100 -> .645   (15.1pp spread)
+# The tilt is CENTRED on the mean conviction of those signals, so the average
+# signal keeps exactly the edge the simulator gives it and only the RELATIVE
+# ordering by conviction is new. This is deliberate: the backtest carries only
+# PRE-MATCH prices, so it cannot calibrate an absolute edge against the LIVE
+# price a bet is struck at. Mean price was flat (1.68-1.83) across conviction
+# bands, so the slope is not a price artefact.
+CONV_EDGE_SLOPE = _f("CONV_EDGE_SLOPE", 0.00377)
+CONV_EDGE_PIVOT = _f("CONV_EDGE_PIVOT", 74.0)
+
+# --- the conviction stake ladder --------------------------------------------
+# CHANGED 2026-09-07 on Alf's instruction: the stake is set by CONVICTION ALONE
+# and does not vary with the price. Kelly is still computed and reported, but it
+# no longer decides the stake.
+#
+# WHY: under Kelly the stake FALLS as the price lengthens at fixed conviction
+# (f = EV/b, and the variance term b grows faster than EV), so a conv-85 signal
+# went 2000 at 1.75 down to 1165 at 4.00. Alf does not want a longer price to
+# shrink the bet. EV-proportional sizing was considered and rejected for now: it
+# is NOT monotonic in odds either, because the simulator's EDGE curve dips above
+# 2.50 (.076 -> .052), and fixing that means asserting edge at long prices that
+# has never been measured against a LIVE price.
+#
+# The ladder is linear from the firing floor to a full-conviction bet:
+#     conv 70 (CONV_FIRE_MIN) -> STAKE_AT_FLOOR
+#     conv 100                -> STAKE_AT_TOP  (the per-bet cap)
+STAKE_AT_FLOOR = _f("STAKE_AT_FLOOR", 1000.0)
+STAKE_AT_TOP = _f("STAKE_AT_TOP", MAX_STAKE_PCT * BANKROLL)
+CONV_STAKE_TOP = _f("CONV_STAKE_TOP", 100.0)
 MULT_MIN = 0.5
 MULT_MAX = _f("MULT_MAX", 2.0)           # conviction multiplier range
 # CONV_MID MUST TRACK CONV_FIRE_MIN. It is the conviction that maps to a x1.0

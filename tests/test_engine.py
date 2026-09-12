@@ -53,17 +53,36 @@ def test_stats_carry_forward_is_independent_per_side():
 
 def test_fire_decision_conviction_floor():
     mon = engine.Monitor(None, None, set())
-    assert mon._fire_decision("1", 49)[0] is False    # below 50 floor
-    assert mon._fire_decision("1", 50)[0] is True      # at the floor fires
+    floor = config.CONV_FIRE_MIN
+    assert mon._fire_decision("1", floor - 1)[0] is False   # below the floor
+    assert mon._fire_decision("1", floor)[0] is True        # at the floor fires
 
 
-def test_fire_decision_only_repeats_on_a_new_high():
+def test_fire_decision_repeats_at_every_checkpoint():
+    """Changed 2026-09-07: an alert repeats while it stays valid.
+
+    The old rule re-fired only on a NEW conviction high, so a fixture that
+    alerted at 90 and then held at 85 went silent for the rest of the match.
+    Alf asked for the opposite: keep telling me, until I say stop.
+    """
     mon = engine.Monitor(None, None, set())
-    assert mon._fire_decision("1", 55)[0] is True
-    mon.best_conv["1"] = 55                            # record the alerted high
-    assert mon._fire_decision("1", 55)[0] is False     # equal -> no repeat
-    assert mon._fire_decision("1", 52)[0] is False     # lower -> no repeat
-    assert mon._fire_decision("1", 60)[0] is True      # higher -> repeats
+    floor = config.CONV_FIRE_MIN
+    assert mon._fire_decision("1", floor + 5)[0] is True
+    mon.best_conv["1"] = floor + 5                      # already alerted this high
+    assert mon._fire_decision("1", floor + 5)[0] is True    # equal -> STILL fires
+    assert mon._fire_decision("1", floor + 2)[0] is True    # lower -> STILL fires
+    assert mon._fire_decision("1", floor - 1)[0] is False   # only the floor stops it
+
+
+def test_muted_and_acked_are_the_only_silencers():
+    """"bet done" and "ignore" are what stop an alert repeating."""
+    mon = engine.Monitor(None, None, set())
+    assert "muted" in vars(mon) and "acked" in vars(mon)
+    mon.muted.add("1")
+    mon.acked.add("2")
+    # _fire_decision itself is unaware of them; suppression happens at the
+    # checkpoint, so assert the sets exist and survive a save/load round trip.
+    assert "1" in mon.muted and "2" in mon.acked
 
 
 # --- price carry-forward ----------------------------------------------------

@@ -23,14 +23,21 @@ def _edge_at(odds):
     return pts[-1][1]
 
 
-def stake_for(odds, open_total=0.0):
+def stake_for(odds, open_total=0.0, conv=None):
     """(stake, assumed_p, kelly_fraction) at the given decimal odds.
+
+    The assumed win probability is the market's implied probability plus an
+    edge. The edge has two parts: the odds-shaped curve from the simulator, and
+    a tilt for how strong THIS signal is. Passing conv=None reproduces the old
+    odds-only behaviour.
 
     Commission is charged on winnings, so the effective net-odds b is
     (odds-1)*(1-commission). Stake is fractional-Kelly, capped at the per-bet
     limit and by remaining exposure room."""
     edge = _edge_at(odds)
-    p = min(1.0 / odds + edge, 0.99)
+    if conv is not None:
+        edge += config.CONV_EDGE_SLOPE * (conv - config.CONV_EDGE_PIVOT)
+    p = min(max(1.0 / odds + edge, 0.0), 0.99)
     b = (odds - 1.0) * (1.0 - config.COMMISSION)
     if b <= 0:
         return 0.0, p, 0.0
@@ -47,16 +54,27 @@ def conviction_multiplier(conv):
 
 
 def size(price, conv, open_total=0.0):
-    """Full sizing suggestion. Returns a dict with the stake and the reasoning
-    (base, multiplier, Kelly ceiling, and which constraint bound it)."""
-    base = config.TARGET_WIN / (price - 1.0)
-    mult = conviction_multiplier(conv)
-    want = base * mult
-    kelly_stake, p, f = stake_for(price, open_total)
-    stake = min(want, kelly_stake)
+    """Full sizing suggestion. The stake is a CONVICTION LADDER, flat in price.
+
+    Kelly is still computed and reported (p, f, kelly) so the alert can show
+    what it would have said, and so the two can be compared once the blotter
+    has enough settled bets to judge them -- but it no longer sets the stake.
+    See config.STAKE_AT_FLOOR for why: Kelly shrinks the bet as the price
+    lengthens, and Alf does not want a longer price to mean less money.
+    """
+    lo, hi = config.CONV_FIRE_MIN, config.CONV_STAKE_TOP
+    span = max(hi - lo, 1.0)
+    frac = (conv - lo) / span
+    frac = max(0.0, min(1.0, frac))
+    want = config.STAKE_AT_FLOOR + frac * (config.STAKE_AT_TOP - config.STAKE_AT_FLOOR)
+    want = min(want, config.MAX_STAKE_PCT * config.BANKROLL)
+
+    # Kelly, for reporting only
+    kelly_stake, p, f = stake_for(price, open_total, conv)
+
     room = config.MAX_TOTAL_PCT * config.BANKROLL - open_total
-    stake = max(0.0, min(stake, room))
-    bound = ("Kelly" if kelly_stake < want
-             else ("exposure cap" if stake < want else "target-win"))
-    return dict(stake=stake, base=base, mult=mult, want=want,
-                kelly=kelly_stake, p=p, f=f, bound=bound)
+    stake = max(0.0, min(want, room))
+    bound = "exposure cap" if stake < want - 1e-9 else "conviction ladder"
+    return dict(stake=stake, base=config.STAKE_AT_FLOOR,
+                mult=(stake / config.STAKE_AT_FLOOR if config.STAKE_AT_FLOOR else 1.0),
+                want=want, kelly=kelly_stake, p=p, f=f, bound=bound)
