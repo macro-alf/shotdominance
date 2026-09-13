@@ -540,7 +540,50 @@ for context. Last updated 2026-08-29.
   buying lift, it should come off or be restricted to the 0-goals branch.
   **The 2014-19 holdout is SPENT — this can be searched, not confirmed.**
 
+- [ ] **MON 14 SEP: xG DIED ON 1 SEPTEMBER. THE AUDIT'S QUESTION IS WRONG.**
+  Measured 2026-09-13 across all 28 days of logs, zero quota. The audit below
+  asks "which LEAGUES lack xG". The answer is that it is not a league question
+  at all - it is a DATE question, and the date is 1 September.
+
+  **Of 758 fixture-days that reached at least one checkpoint, only 236 (31%)
+  had xG on half or more of their checkpoint rows.** The distribution is
+  bimodal, not patchy: 514 (68%) never saw xG at a checkpoint and 228 (30%) saw
+  it on every single one. Within a fixture it is all or nothing.
+
+      14-16 Aug   33-73%          01-09 Sep    0%  <- nine days, 215 fixtures
+      21-24 Aug   84-90%          11 Sep       3%
+      28 Aug     100%             12 Sep       8%
+      30 Aug      97%             13 Sep       6%
+      31 Aug      81%
+
+  Nine consecutive days at EXACTLY zero, then a trickle. Before that, routinely
+  80-100% including Serie A and the Bundesliga, which are now at zero. This is a
+  step change in what the provider serves, datable to within a day. Three of the
+  four earlier zero days (18, 20, 27 Aug) were the UEFA-heavy cards already
+  identified - the September collapse is unrelated and spans every competition.
+
+  **Why this matters beyond coverage:**
+  - `STRONG_NEED` falls back from 3-of-4 to 2-of-3 whenever xG is absent, so the
+    strong-evidence gate has been stuck in its WEAKER form for a fortnight.
+  - **Every threshold now live was calibrated on four-metric data.** The
+    backtest uses Understat, which is an xG source, so `CONV_FIRE_MIN`, the
+    win-probability model and the required-price curve were all fitted where xG
+    is always present and are being applied where it never is. That is the same
+    class of error as the conviction-floor episode on 08-31: calibrated on one
+    distribution, deployed against another.
+
+  **Do first, all free:** re-run the backtest with xG FORCED ABSENT (drop it in
+  `reconstruct.build`) and compare lift, signal count and the fitted
+  probabilities against the four-metric version. That measures what two weeks of
+  three-metric running has actually been doing. Only then decide whether to
+  chase the provider.
+  **Then ask API-Football directly** - a fortnight of exactly zero on a field
+  that previously ran at 100% is a support ticket, not a tuning problem.
+
 - [ ] **MON 31 AUG: DEEP ANALYSIS OF IN-PLAY STAT AVAILABILITY BY LEAGUE.**
+  NOTE 2026-09-13: superseded in framing by the item above - the dominant
+  variable is the date, not the league. Keep the per-league cuts for the core
+  shot metrics, which do still vary by competition.
   Queued 2026-08-29. **The question this answers: can we keep using API-Football
   at all, or does the strategy require a different provider?** This is the
   prerequisite for the provider item below — do not price up vendors until this
