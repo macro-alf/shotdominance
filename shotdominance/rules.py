@@ -230,7 +230,13 @@ def win_probability(state, minute, conv):
     else:
         p = config.WINP_LEVEL_BASE + config.WINP_LEVEL_SLOPE * (minute - 45.0)
     if conv >= config.WINP_STRONG_FROM:
-        p += config.WINP_STRONG_BONUS
+        # the bonus decays to nothing by 70': see config.WINP_BONUS_LATE
+        if minute >= config.WINP_LATE_FROM:
+            p += config.WINP_BONUS_LATE
+        elif minute >= config.WINP_MID_FROM:
+            p += config.WINP_BONUS_MID
+        else:
+            p += config.WINP_BONUS_EARLY
     return max(0.02, min(0.95, p))
 
 

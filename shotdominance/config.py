@@ -142,22 +142,39 @@ STRONG_GATE = _i("STRONG_GATE", 1) != 0
 # Behind decays far more slowly because the double chance only needs a draw.
 MIN_ODDS_GATE = _i("MIN_ODDS_GATE", 1) != 0
 
-# Straight-line fits to the measured win rates above. Deliberately simple: the
-# per-cell samples are 15-92, so anything fancier would be fitting noise.
-WINP_LEVEL_BASE = _f("WINP_LEVEL_BASE", 0.591)     # P(win) at minute 45, level
-WINP_LEVEL_SLOPE = _f("WINP_LEVEL_SLOPE", -0.0088)  # per minute after 45
-WINP_BEHIND_BASE = _f("WINP_BEHIND_BASE", 0.564)   # double chance at minute 45
-WINP_BEHIND_SLOPE = _f("WINP_BEHIND_SLOPE", -0.0034)
+# REFITTED 2026-09-13 after Alf asked whether the probability actually knows how
+# dominant the favourite was. It does - the fit is on the rule_ok population, so
+# every row is a favourite that PASSED the dominance rule. That is worth about
+# +8pp on its own: level state at 70-77', dominating favourites win 36.6%
+# (n=257) against 28.2% for those that failed the rule (n=3,962).
+#
+# The base curves are fitted on evidence<70 ONLY. Fitting them on everything and
+# then adding a bonus double-counts the strong cases, which is what the first
+# version did.
+WINP_LEVEL_BASE = _f("WINP_LEVEL_BASE", 0.593)      # evidence<70, minute 45
+WINP_LEVEL_SLOPE = _f("WINP_LEVEL_SLOPE", -0.00841)
+WINP_BEHIND_BASE = _f("WINP_BEHIND_BASE", 0.596)
+WINP_BEHIND_SLOPE = _f("WINP_BEHIND_SLOPE", -0.00646)
 
-# Evidence conviction is FLAT below 70 (48.2 / 48.1 / 48.3% for <50 / 50-60 /
-# 60-70) and only separates above it (57.2%, n=152). So it earns one step, not a
-# gradient - and that step is also why CONV_FIRE_MIN sits at 70.
+# THE EVIDENCE BONUS IS NOT CONSTANT - it decays to nothing late in the match.
+# Measured (level, the only state with usable cell sizes):
+#     45-59'   >=70: 63.0% (n=81)   <70: 55.2% (n=504)   -> +7.8pp
+#     60-69'   >=70: 61.0% (n=41)   <70: 45.1% (n=273)   -> +15.9pp
+#     70-79'   >=70: 36.7% (n=30)   <70: 36.6% (n=227)   -> +0.1pp
+# By 70' a strong evidence score buys NOTHING: a side dominating 19-11 in a
+# goalless game is no likelier to score than one merely passing the rule. The
+# first version applied a flat +9pp at every minute, which made the gate too
+# LENIENT for high-conviction fixtures after 70' - the opposite of the error
+# first suspected.
+# Behind-state cells are 11-16 rows and cannot carry their own fit, so they use
+# the level bands. Flagged rather than invented.
 WINP_STRONG_FROM = _f("WINP_STRONG_FROM", 70.0)
-WINP_STRONG_BONUS = _f("WINP_STRONG_BONUS", 0.09)
+WINP_BONUS_EARLY = _f("WINP_BONUS_EARLY", 0.078)    # up to 60'
+WINP_BONUS_MID = _f("WINP_BONUS_MID", 0.159)        # 60-69'
+WINP_BONUS_LATE = _f("WINP_BONUS_LATE", 0.0)        # 70'+ : measured at zero
+WINP_MID_FROM = _f("WINP_MID_FROM", 60.0)
+WINP_LATE_FROM = _f("WINP_LATE_FROM", 70.0)
 
-# How far above break-even the offered price must sit. 0.0 would accept a
-# zero-edge bet; the model is an estimate off 1,569 checkpoints, so a buffer is
-# not optional. Raise it to bet less and better.
 EDGE_MARGIN = _f("EDGE_MARGIN", 0.10)
 
 # --- adaptive polling -------------------------------------------------------
