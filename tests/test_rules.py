@@ -152,15 +152,26 @@ def test_evaluate_reports_present_metric_count():
     assert ev2.n_present == 4
 
 
-def test_time_factor_boost_only_default():
-    # shipped default: enabled (0.5) with pivot at the last checkpoint (75) ->
-    # boost-only: >=1 everywhere, strongest at 45', exactly 1.0 at 75'.
-    assert config.TIME_WEIGHT == 0.5 and config.TIME_PIVOT_MIN == 75.0
-    assert abs(rules.time_factor(75) - 1.0) < 1e-9
-    assert rules.time_factor(45) > rules.time_factor(60) > rules.time_factor(75)
+def test_time_factor_is_off_by_default_since_2026_09_13():
+    """Time remaining moved OUT of conviction and INTO the required price.
+
+    Leaving both on double-counted time: the boost made the effective evidence
+    bar 33% harder at 75' than at 45', which muted exactly the late signals that
+    carry the longest prices. See config.MIN_ODDS_GATE.
+    """
+    assert config.TIME_WEIGHT == 0.0
     for cp in (45, 50, 55, 60, 65, 70, 75):
-        assert rules.time_factor(cp) >= 1.0 - 1e-9      # never below 1 (boost-only)
-    assert abs(rules.time_factor(45) - (1.0 + config.TIME_WEIGHT * (1.0 - 1.0/3.0))) < 1e-6
+        assert rules.time_factor(cp) == 1.0     # conviction is pure evidence now
+
+
+def test_time_factor_still_works_if_deliberately_re_enabled():
+    old = config.TIME_WEIGHT
+    config.TIME_WEIGHT = 0.5
+    try:
+        assert rules.time_factor(45) > rules.time_factor(60) > rules.time_factor(75)
+        assert abs(rules.time_factor(75) - 1.0) < 1e-9
+    finally:
+        config.TIME_WEIGHT = old
 
 
 def test_time_factor_disabled_when_weight_zero():
@@ -185,10 +196,11 @@ def test_time_factor_symmetric_when_pivot_60():
 def test_conviction_scales_by_time_factor():
     fav = {"xg": 1.6, "shots": 18, "sot": 6, "box": 9}
     opp = {"xg": 0.2, "shots": 2, "sot": 0, "box": 1}
-    ev = rules.evaluate({}, "t", 50, fav, opp, fav_goals=0)   # default (enabled)
+    ev = rules.evaluate({}, "t", 50, fav, opp, fav_goals=0)
     base = 0.55 * ev.s_vol + 0.30 * ev.s_mom + 0.15 * ev.s_dom
-    assert ev.time_mult > 1.0                                # 50' is before 75' pivot
-    assert abs(ev.conv - min(100.0, base * ev.time_mult)) < 0.2
+    # time factor is off by default, so conviction IS the evidence blend
+    assert ev.time_mult == 1.0
+    assert abs(ev.conv - min(100.0, base)) < 0.2
 
 
 def test_due_checkpoint_only_latest_fires():
@@ -200,3 +212,44 @@ def test_due_checkpoint_only_latest_fires():
     # once 60 is recorded as judged, the same minute yields nothing
     done.add(60)
     assert rules.due_checkpoint(done, 63) is None
+
+
+# --- minimum price for an edge ---------------------------------------------
+def test_win_probability_falls_with_the_clock():
+    early = rules.win_probability("level", 45, 60)
+    late = rules.win_probability("level", 75, 60)
+    assert early > late
+    assert 0.55 < early < 0.62          # measured 59.1% at 45'
+    assert 0.30 < late < 0.36           # measured 32.8% at 75'
+
+
+def test_double_chance_decays_more_slowly_than_a_win_bet():
+    lvl = rules.win_probability("level", 45, 60) - rules.win_probability("level", 75, 60)
+    beh = rules.win_probability("behind", 45, 60) - rules.win_probability("behind", 75, 60)
+    assert beh < lvl                     # a draw still settles the DC
+
+
+def test_strong_evidence_raises_the_probability_as_one_step():
+    # measured: <50/50-60/60-70 all ~48%, 70+ jumps to 57.2%
+    assert rules.win_probability("level", 60, 55) == rules.win_probability("level", 60, 65)
+    assert rules.win_probability("level", 60, 75) > rules.win_probability("level", 60, 65)
+
+
+def test_min_price_rises_with_time_and_falls_with_evidence():
+    assert rules.min_price("level", 75, 60) > rules.min_price("level", 45, 60)
+    assert rules.min_price("level", 60, 75) < rules.min_price("level", 60, 60)
+
+
+def test_min_price_covers_commission_and_margin():
+    p = rules.win_probability("level", 60, 60)
+    breakeven = 1.0 + (1.0 - p) / (p * (1.0 - config.COMMISSION))
+    assert abs(rules.min_price("level", 60, 60)
+               - breakeven * (1.0 + config.EDGE_MARGIN)) < 1e-9
+    assert breakeven > 1.0 / p           # commission makes it dearer than fair
+
+
+def test_time_factor_is_off_so_conviction_is_comparable_across_minutes():
+    # the whole point of moving time into the price: a score at 21' and a score
+    # at 65' now mean the same thing
+    assert rules.time_factor(45) == 1.0
+    assert rules.time_factor(75) == 1.0

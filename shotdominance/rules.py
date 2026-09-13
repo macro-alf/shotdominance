@@ -217,6 +217,36 @@ def time_remaining_frac(minute):
     return max(0.0, min(1.0, (config.MATCH_END - minute) / span))
 
 
+def win_probability(state, minute, conv):
+    """Estimated P(the bet wins) from the scoreline state, the clock and the
+    evidence score. Fitted to 2020-23 with penalties stripped; see the block at
+    config.MIN_ODDS_GATE for the measured table this approximates.
+
+    `state` is "level" or "behind" - behind means the double chance, which
+    decays far more slowly with time because a draw settles it as a win.
+    """
+    if state == "behind":
+        p = config.WINP_BEHIND_BASE + config.WINP_BEHIND_SLOPE * (minute - 45.0)
+    else:
+        p = config.WINP_LEVEL_BASE + config.WINP_LEVEL_SLOPE * (minute - 45.0)
+    if conv >= config.WINP_STRONG_FROM:
+        p += config.WINP_STRONG_BONUS
+    return max(0.02, min(0.95, p))
+
+
+def min_price(state, minute, conv):
+    """The shortest price worth taking, given how likely the bet is to win.
+
+    Break-even against commission is  1 + (1-p) / (p * (1-c))  -- the stake is
+    lost in full when it loses, but only (odds-1)*(1-commission) is won when it
+    wins. EDGE_MARGIN is then applied on top so a zero-edge bet is not accepted:
+    the probability is an estimate off 1,569 checkpoints, not a known quantity.
+    """
+    p = win_probability(state, minute, conv)
+    breakeven = 1.0 + (1.0 - p) / (p * (1.0 - config.COMMISSION))
+    return breakeven * (1.0 + config.EDGE_MARGIN)
+
+
 def time_factor(minute):
     """Conviction multiplier from time remaining: >1 earlier in the match, <1
     later, exactly 1.0 at TIME_PIVOT_MIN. TIME_WEIGHT=0 disables it (1.0).

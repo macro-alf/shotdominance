@@ -121,6 +121,45 @@ STRONG_NEED = _i("STRONG_NEED", 3)
 # which restores the pre-2026-08-24 "momentum OR cumulative" scored branch.
 STRONG_GATE = _i("STRONG_GATE", 1) != 0
 
+# --- minimum price for an edge ----------------------------------------------
+# REPLACES the time factor in the firing gate (TIME_WEIGHT is now 0). The old
+# design multiplied conviction by 1.33 at 45' falling to 1.00 at 75' and then
+# compared it to a FIXED floor, which quietly made the floor time-varying: the
+# evidence needed to fire was 52.5 at 45' but 70.0 at 75', a third harder late.
+# Le Havre 0-0 Angers (2026-09-12) is the worked example - its evidence score sat
+# flat at 53-60 for thirty minutes while reported conviction fell 72 -> 53 purely
+# as the boost unwound, so it alerted at 2.88-3.25 and went silent at 4.00-5.50.
+# The system was structurally buying at the shortest prices the fixture offered.
+#
+# "Less time to convert" is now expressed where it belongs - in the PRICE. Fewer
+# minutes left means a lower chance of the goal the bet needs, so the bet needs
+# a longer price to be worth taking. Measured on 2020-23 with penalties stripped
+# (rule_ok population, n=1,156 level / 413 behind):
+#
+#   LEVEL   45' P(win) 59.1% -> break-even 1.71     BEHIND  45' 56.4% -> 1.80
+#           75'        32.8% ->            3.12             75' 46.2% -> 2.20
+#
+# Behind decays far more slowly because the double chance only needs a draw.
+MIN_ODDS_GATE = _i("MIN_ODDS_GATE", 1) != 0
+
+# Straight-line fits to the measured win rates above. Deliberately simple: the
+# per-cell samples are 15-92, so anything fancier would be fitting noise.
+WINP_LEVEL_BASE = _f("WINP_LEVEL_BASE", 0.591)     # P(win) at minute 45, level
+WINP_LEVEL_SLOPE = _f("WINP_LEVEL_SLOPE", -0.0088)  # per minute after 45
+WINP_BEHIND_BASE = _f("WINP_BEHIND_BASE", 0.564)   # double chance at minute 45
+WINP_BEHIND_SLOPE = _f("WINP_BEHIND_SLOPE", -0.0034)
+
+# Evidence conviction is FLAT below 70 (48.2 / 48.1 / 48.3% for <50 / 50-60 /
+# 60-70) and only separates above it (57.2%, n=152). So it earns one step, not a
+# gradient - and that step is also why CONV_FIRE_MIN sits at 70.
+WINP_STRONG_FROM = _f("WINP_STRONG_FROM", 70.0)
+WINP_STRONG_BONUS = _f("WINP_STRONG_BONUS", 0.09)
+
+# How far above break-even the offered price must sit. 0.0 would accept a
+# zero-edge bet; the model is an estimate off 1,569 checkpoints, so a buffer is
+# not optional. Raise it to bet less and better.
+EDGE_MARGIN = _f("EDGE_MARGIN", 0.10)
+
 # --- penalties --------------------------------------------------------------
 # A penalty is a single binary award, not territorial dominance, and it
 # contaminates THREE metrics at once. Genoa 0-1 Frosinone (2026-09-12), one poll
@@ -230,7 +269,26 @@ CONV_CAP = _f("CONV_CAP", 2.0)
 # (>=60 lifts +8.02pp vs +8.20pp at 50, and 54.2%/+9.34pp at 65) while cutting
 # 45% rather than 70%. Re-derive from the LIVE distribution once there are
 # enough live signals to do it honestly.
-CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 70.0)
+# RECALIBRATED 70 -> 50 on 2026-09-13, because the SCALE changed underneath it.
+# With TIME_WEIGHT now 0 conviction is pure evidence, and the old 70 was set
+# against a score boosted by up to x1.333 - a reported 72 at 45' is only 54 on
+# the new scale. Replaying every live signal ever fired proves it: a floor of 70
+# on the evidence scale cuts 52 of 56 priced signals, 93%. That is the same trap
+# as the 65 episode on 2026-08-31, arrived at from the opposite direction.
+#
+# The floor's JOB has also changed. It no longer has to guarantee an edge -
+# MIN_ODDS_GATE does that, and does it better because it prices the signal
+# instead of assuming. What is left for the floor is "is this a real signal at
+# all", so it can afford to be permissive. Replayed against the 53 live signals
+# that had a quoted price:
+#     floor >=50  39 pass the floor, 14 also clear the price  (26% overall)
+#     floor >=60  22 pass the floor,  7 also clear the price  (13%)
+#     floor >=70   7 pass the floor,  3 also clear the price  ( 6%)
+# The price gate removes 25 of the 39 at floor 50 - it is the binding filter,
+# which is the intent. Note this also sets the bottom of the stake ladder
+# (sizing.size reads CONV_FIRE_MIN), so the weakest permissible signal still
+# sizes at STAKE_AT_FLOOR.
+CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 50.0)
 # RAISED 60 -> 70 on 2026-09-07, on Alf's instruction, to give the WEAKEST
 # signal that can fire a stake worth placing. Under half-Kelly with
 # conviction inside p, conviction 69.7 at odds 2.00 sizes to exactly 1000;
@@ -250,7 +308,14 @@ CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 70.0)
 # at the last checkpoint (75) this is BOOST-ONLY: conviction is raised earlier in
 # the match (x1.33 at 45') and left unchanged at 75' - it never suppresses a late
 # signal. TIME_WEIGHT=0 disables it; TIME_PIVOT_MIN=60 makes it symmetric.
-TIME_WEIGHT = _f("TIME_WEIGHT", 0.5)
+# TURNED OFF 2026-09-13. Time remaining is now handled by MIN_ODDS_GATE above,
+# which demands a longer PRICE late rather than suppressing the SCORE late.
+# Leaving both on would double-count time: the old factor already made the
+# effective evidence bar 33% harder at 75' than at 45'. Conviction is now a pure
+# evidence measure, comparable across minutes - which also means a conviction
+# printed at 21' and one printed at 65' finally mean the same thing.
+# Set to 0.5 to restore the old behaviour.
+TIME_WEIGHT = _f("TIME_WEIGHT", 0.0)
 MATCH_END = _f("MATCH_END", 90.0)            # nominal full-time minute
 TIME_PIVOT_MIN = _f("TIME_PIVOT_MIN", 75.0)  # minute where the factor is neutral
 

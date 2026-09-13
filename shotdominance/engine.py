@@ -628,12 +628,24 @@ class Monitor:
         # With PRICE_GATE off the quoted price no longer vetoes a signal - it is
         # a bookmaker number and the bet goes on an exchange at a better one.
         price_ok = in_band or not config.PRICE_GATE
+
+        # MINIMUM PRICE FOR AN EDGE. Replaces the old time factor: instead of
+        # suppressing the SCORE late in a match, demand a longer PRICE, because
+        # fewer minutes left means a lower chance of the goal the bet needs.
+        # Only bites when a price is actually quoted - with none there is
+        # nothing to test, and the alert still goes out unsized as before.
+        state = "behind" if fav_goals < opp_goals else "level"
+        need = rules.min_price(state, minute, ev.conv)
+        edge_ok = True
+        if config.MIN_ODDS_GATE and price is not None and ev.ok:
+            edge_ok = price >= need
+
         if fid in self.acked or fid in self.muted:
             print("       cp%d: signal suppressed - %s" %
                   (cp, "bet already logged" if fid in self.acked else "ignored by Alf"),
                   flush=True)
             return
-        if not (ev.ok and price_ok):
+        if not (ev.ok and price_ok and edge_ok):
             why = ["vol %d/%d mom %d/%d [%s]"
                    % (ev.vol_met, nd, ev.mom_met, nd, ev.basis)]
             if ev.approx:
@@ -643,6 +655,11 @@ class Monitor:
             if not price_ok:
                 why.append("price %.2f outside %.2f-%.2f"
                            % (price, config.PRICE_FLOOR, config.PRICE_CEIL))
+            if not edge_ok:
+                why.append("price %.2f below %.2f needed for an edge "
+                           "(%s, %d', P(win) %.0f%%)"
+                           % (price, need, state, minute,
+                              100 * rules.win_probability(state, minute, ev.conv)))
             print("       cp%d %s: %s"
                   % (cp, "no signal" if expired else "not yet (window open)",
                      "; ".join(why)), flush=True)

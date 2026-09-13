@@ -63,6 +63,20 @@ def build(shots):
         other = "a" if side == "h" else "h"
         for sh in shots.get(side) or []:
             m = min(int(sh["minute"]), MAX_MIN)
+            # PENALTIES ARE EXCLUDED FROM THE METRICS, matching the live engine
+            # (config.STRIP_PENALTIES). A penalty is a single binary award, not
+            # territorial dominance, and it contaminates xg/shots/sot/box at
+            # once. Understat flags them as situation='Penalty' at ~0.746 xG
+            # (142 in a 400-match sample, range 0.740-0.761), which is the same
+            # order as the 0.78 measured live. The GOAL still counts - the
+            # scoreline is real and drives goals_needed and the branch - only
+            # the shot evidence is dropped.
+            if config.STRIP_PENALTIES and sh.get("situation") == "Penalty":
+                if sh["result"] == "Goal":
+                    gl[side][m] += 1
+                elif sh["result"] == "OwnGoal":
+                    gl[other][m] += 1
+                continue
             bucket = per[side][m]
             bucket["shots"] += 1
             try:

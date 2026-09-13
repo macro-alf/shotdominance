@@ -117,6 +117,48 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [x] **TIME MOVED OUT OF CONVICTION AND INTO THE PRICE — DONE 2026-09-13.**
+  Alf's design. The old time factor multiplied conviction by 1.333 at 45'
+  falling to 1.000 at 75' and then compared it to a FIXED floor, which quietly
+  made the floor time-varying: the evidence needed to fire was 52.5 at 45' but
+  70.0 at 75'. Le Havre 0-0 Angers (2026-09-12) is the worked example - its
+  evidence score sat flat at 53-60 for thirty minutes while reported conviction
+  fell 72 -> 53 purely as the boost unwound. It alerted at 2.88-3.25 and went
+  silent at 4.00-5.50, i.e. the system was structurally buying at the SHORTEST
+  prices the fixture offered.
+
+  **Now:** `TIME_WEIGHT=0`, so conviction is pure evidence and comparable across
+  minutes. "Less time to convert" is expressed as a MINIMUM PRICE instead.
+  Measured on 2020-23 with penalties stripped (n=1,156 level / 413 behind):
+
+      LEVEL   45' P(win) 59.1% -> break-even 1.71   BEHIND  45' 56.4% -> 1.80
+              75'        32.8% ->            3.12           75' 46.2% -> 2.20
+
+  Behind decays far more slowly because a draw settles the double chance.
+  Evidence conviction turned out to be FLAT below 70 (48.2 / 48.1 / 48.3% for
+  <50 / 50-60 / 60-70) and to jump only above it (57.2%), so it earns one step
+  in the model rather than a gradient. Required price = break-even on
+  commission, times `EDGE_MARGIN` (10%).
+
+  **`CONV_FIRE_MIN` 70 -> 50, because the scale moved underneath it.** A floor of
+  70 on the evidence scale cuts 52 of 56 priced live signals (93%) - the same
+  trap as the 65 episode on 08-31, from the other direction. The floor's job is
+  now only "is this real"; the price gate decides "does it pay", and it is the
+  binding filter: at floor 50, 39 of 53 live signals pass the floor and 14 also
+  clear the price.
+
+  Le Havre under the new rule fires at 50', 55', 61', 65', 71' AND 75', each
+  against a bar rising 2.04 -> 3.43, instead of going quiet after 55'.
+
+  **What is NOT established.** The probability model is fitted to backtest
+  outcomes, and Phase 1 has no in-play prices - so the model says how often
+  these bets WIN, never what they were available AT. The whole gate is therefore
+  calibrated on one side of the trade. It needs revisiting against real prices
+  in Phase 2, and against the blotter's `price_taken` once enough bets settle.
+  Cells behind the fit are 15-92, which is why it is a straight line and not
+  something cleverer.
+
+
 - [x] **PENALTIES STRIPPED FROM THE STATS — DONE 2026-09-13.**
   `STRIP_PENALTIES=1`. Penalty attempts, scored and missed, are subtracted from
   xg/shots/sot/box for BOTH sides before anything else sees the numbers.
