@@ -147,6 +147,27 @@ for context. Last updated 2026-08-29.
   Related: the Medium item "1b - evaluate every poll once eligible" is the
   general version of this. cp80 is the cheap 80% of it.
 
+  **BLOCKER, raised by Alf 2026-09-13: the model has no opinion at 80' that can
+  be trusted, and the two versions disagree.** cp80 cannot be evaluated until
+  that is settled, because the price bar IS the decision at that stage.
+  - **The fit stops at 79'.** Checkpoints run to 75 and grace to 79, so there is
+    no observation at 80+. Any number quoted there is extrapolation.
+  - **The refit says the price bar at 80' is 3.42 REGARDLESS of conviction**,
+    because the measured late evidence bonus was +0.1pp (>=70: 36.7% n=30;
+    <70: 36.6% n=227). So conviction 20 and conviction 95 are charged the same.
+  - **The live monitor disagrees**: with the old flat +9pp it charges 3.76 at
+    conviction 45 and 2.88 at conviction 95 - nearly a point apart, in the
+    opposite direction.
+  - **The zero is built on n=30.** A bonus worth +15.9pp at 60-69' collapsing to
+    +0.1pp at 70-79' is a suspiciously sharp cliff. It may be real (late goals
+    are more random) or it may be thin data. Thirty rows should not be trusted
+    to zero out a variable that large.
+
+  **So do this first**: widen the late band, or pool 70-90' from the eligible
+  population rather than only rule_ok rows, and get a defensible number of
+  observations behind the late bonus. Only then decide what cp80's bar should
+  be, and only then whether cp80 is worth adding at all.
+
 - [ ] **MON 14 SEP: PUSH THE QUOTA SAVING FURTHER DOWN THE CONVICTION CURVE.**
   Asked for by Alf 2026-09-13. Adaptive polling shipped today (SLOW_POLL: <30
   every 4th cycle, <45 every 2nd) and worked - up to 10 of 20 watched fixtures
