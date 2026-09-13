@@ -245,12 +245,13 @@ def min_price(state, minute, conv):
 
     Break-even against commission is  1 + (1-p) / (p * (1-c))  -- the stake is
     lost in full when it loses, but only (odds-1)*(1-commission) is won when it
-    wins. EDGE_MARGIN is then applied on top so a zero-edge bet is not accepted:
-    the probability is an estimate off 1,569 checkpoints, not a known quantity.
+    wins. The result is floored at MIN_BACKABLE_ODDS: below that a bet is not
+    worth the trouble whatever the model says, and with EDGE_MARGIN now 0 the
+    floor is the only guard against the probability being optimistic.
     """
     p = win_probability(state, minute, conv)
     breakeven = 1.0 + (1.0 - p) / (p * (1.0 - config.COMMISSION))
-    return breakeven * (1.0 + config.EDGE_MARGIN)
+    return max(breakeven * (1.0 + config.EDGE_MARGIN), config.MIN_BACKABLE_ODDS)
 
 
 def time_factor(minute):

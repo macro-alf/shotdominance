@@ -253,3 +253,16 @@ def test_time_factor_is_off_so_conviction_is_comparable_across_minutes():
     # at 65' now mean the same thing
     assert rules.time_factor(45) == 1.0
     assert rules.time_factor(75) == 1.0
+
+
+def test_required_price_is_floored_at_the_minimum_backable_odds():
+    # early, where break-even is short, the FLOOR binds
+    assert rules.min_price("level", 45, 75) == config.MIN_BACKABLE_ODDS
+    # late, where break-even is long, BREAK-EVEN binds
+    assert rules.min_price("level", 75, 60) > config.MIN_BACKABLE_ODDS
+
+
+def test_no_percentage_margin_is_applied():
+    p = rules.win_probability("level", 75, 60)
+    breakeven = 1.0 + (1.0 - p) / (p * (1.0 - config.COMMISSION))
+    assert abs(rules.min_price("level", 75, 60) - breakeven) < 1e-9

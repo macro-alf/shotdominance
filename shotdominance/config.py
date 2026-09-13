@@ -175,7 +175,24 @@ WINP_BONUS_LATE = _f("WINP_BONUS_LATE", 0.0)        # 70'+ : measured at zero
 WINP_MID_FROM = _f("WINP_MID_FROM", 60.0)
 WINP_LATE_FROM = _f("WINP_LATE_FROM", 70.0)
 
-EDGE_MARGIN = _f("EDGE_MARGIN", 0.10)
+# Alf 2026-09-13: NO extra margin over break-even, but never back anything under
+# MIN_BACKABLE_ODDS. The percentage margin was doing two jobs badly - it was both
+# a safety buffer against a model fitted on 1,569 checkpoints AND the only thing
+# stopping a short-priced bet, and it scaled wrongly (10% of a 1.71 break-even is
+# 17 cents, 10% of a 2.99 is 30). A flat floor separates them: break-even decides
+# WHEN there is value, the floor decides what is worth the trouble at all.
+#
+# The floor binds early and break-even binds late, which is the right way round:
+#     level, evidence<70   45'  break-even 1.71 -> floor 1.85 binds
+#                          75'  break-even 2.99 -> break-even binds
+#
+# Note EDGE_MARGIN 0 means the gate now accepts a ZERO-edge bet wherever
+# break-even exceeds the floor, on the model's word alone. The floor is the only
+# remaining protection against the probability estimate being optimistic - if
+# that proves too permissive, raise MIN_BACKABLE_ODDS rather than reinstating a
+# percentage margin, so the two jobs stay separate.
+EDGE_MARGIN = _f("EDGE_MARGIN", 0.0)
+MIN_BACKABLE_ODDS = _f("MIN_BACKABLE_ODDS", 1.85)
 
 # --- adaptive polling -------------------------------------------------------
 # Alf 2026-09-13: pace the dull fixtures much more slowly instead of spending
