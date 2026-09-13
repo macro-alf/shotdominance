@@ -117,6 +117,65 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **MON 14 SEP: ADD A CHECKPOINT AT 80.** Asked for by Alf 2026-09-13.
+  Checkpoints stop at 75, so a fixture that becomes worth backing after 79' can
+  never be alerted. Heerenveen 0-0 Telstar the same day is the case: cp75 expired
+  at 79' with the price at 2.60 against 3.85 needed, and by 85' the price had
+  drifted to 3.60 against 3.41 needed - **it had become a valid bet with no
+  checkpoint left to fire on.**
+
+  **Measured across all logs**: of 3,200 watched rows at 79-88', 101 rows across
+  **19 distinct fixtures** had a real momentum window AND passed the evidence
+  rule while unjudged. Highest convictions among them:
+
+      Modena v Avellino          79'  conv 67  price 2.50
+      Dundee Utd v Falkirk       84'  conv 65  price n/a
+      Venezia v Lecce            80'  conv 63  price 15.00
+      Heerenveen v Telstar       79'  conv 63  price 2.60
+      Nordsjaelland v Silkeborg  79'  conv 62  price 2.30
+      Cercle Brugge v St Truiden 79'  conv 60  price 15.00
+
+  **API cost is nil** - those fixtures are already being polled; a checkpoint is
+  an evaluation, not a request. The only cost is that `_due_for_poll` never
+  skips inside a checkpoint window, so cp80 removes ~5 minutes of skip
+  eligibility per fixture.
+  **But check the economics before adding it.** At 80' the required price is
+  around 3.4 for a level favourite, so most of these fail the edge gate anyway -
+  Modena at 2.50 and Heerenveen at 2.60 both would. The two at 15.00 are
+  effectively dead matches. So cp80 may add alerts without adding bets; measure
+  how many of the 19 would ALSO clear the price bar before shipping it.
+  Related: the Medium item "1b - evaluate every poll once eligible" is the
+  general version of this. cp80 is the cheap 80% of it.
+
+- [ ] **MON 14 SEP: PUSH THE QUOTA SAVING FURTHER DOWN THE CONVICTION CURVE.**
+  Asked for by Alf 2026-09-13. Adaptive polling shipped today (SLOW_POLL: <30
+  every 4th cycle, <45 every 2nd) and worked - up to 10 of 20 watched fixtures
+  skipped per cycle, and a 62-fixture Sunday planned at 7,298 of 7,496 finished
+  near 5,000. The question is whether it goes far enough.
+
+  **Where the calls actually go, September to date:**
+
+      conviction   rows    share
+      <20          7,809     39%
+      20-40        7,794     39%
+      40-60        2,840     14%
+      >=60         1,688      8%
+
+  **78% of every statistics call is spent on fixtures below conviction 40**, and
+  the floor to fire is 60. Options, cheapest first:
+  - **a.** A fourth tier: below 15, poll every 8th cycle. Those fixtures are
+    almost never coming back - measure how often a row under 15 later reaches
+    60 before spending more on them.
+  - **b.** Stop polling a fixture entirely once it CANNOT fire: at 1-3 down the
+    `goals_needed` multiplier puts the volume bars out of reach for the rest of
+    the match. That is deterministic, not statistical.
+  - **c.** Widen the skip to the odds call as well, not just statistics.
+  **Keep the safety property**: never skip inside a checkpoint window, or a
+  fixture can be stranded in the slow tier with no way for its conviction to
+  refresh. That guarantee is what makes the whole scheme safe and it is pinned
+  by `test_a_checkpoint_window_is_never_skipped`.
+
+
 - [ ] **MON 14 SEP: ADD PRE-MATCH PRICE TO THE WIN-PROBABILITY MODEL.**
   Alf asked 2026-09-13 whether the implied odds condition on how dominant the
   side is, and whether being a heavy pre-match favourite changes things. First
