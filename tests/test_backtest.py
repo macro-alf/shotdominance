@@ -87,11 +87,12 @@ def test_history_starts_where_the_engine_records():
 
 # --- gating and settlement --------------------------------------------------
 def test_favourite_band_matches_the_live_gate():
-    """Band widened to 1.30-3.00 on 2026-08-23: a side quoted 2.99 pre-match
-    that is dominating in play is still the thesis."""
+    """Band is 1.01-3.00. The FLOOR was dropped from 1.30 on 2026-08-30 on
+    measurement: the 116 signals it discarded scored +15.06pp stratified
+    (z=3.30), the highest-lift population in the dataset. The ceiling stays."""
     assert replay.favourite(1.80, 4.00) == ("h", 1.80)
     assert replay.favourite(4.00, 2.00) == ("a", 2.00)
-    assert replay.favourite(1.20, 8.00) is None      # too short
+    assert replay.favourite(1.20, 8.00) == ("h", 1.20)   # no longer "too short"
     assert replay.favourite(2.99, 4.50) == ("h", 2.99)   # inside the wider band
     assert replay.favourite(3.20, 3.40) is None      # both beyond MAX_ODDS
 

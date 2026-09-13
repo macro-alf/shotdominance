@@ -1,0 +1,8 @@
+placed_at,fixture_id,competition,match,minute,back,side,market,score_at_bet,conviction,alert_price,stake,price_taken,final_score,status,pnl
+2026-08-15 17:36:28,1563088,Championship,Norwich 0-0 West Brom,71,Norwich,home,win,0-0,60.0,2.4,781.0,2.6,1-2,lost,-781.0
+2026-08-16 15:36:09,1548992,Superliga,FC Nordsjaelland 0-0 Silkeborg,76,FC Nordsjaelland,home,win,0-0,57.8,2.0,1225.0,2.15,1-0,won,1366.49
+2026-08-22 21:57:15,1552736,Ligue 1,Toulouse 0-0 Lyon,50,Toulouse,home,win,0-0,76.0,2.5,1250.0,2.4,0-2,lost,-1250.0
+2026-08-28 22:16:50,1550097,Serie A,AC Milan 0-0 Venezia,61,AC Milan,home,win,0-0,62.3,1.909,1500.0,1.925,2-0,won,1345.88
+2026-08-30 17:45:02,1494261,Allsvenskan,IFK Goteborg 0-0 Orgryte IS,48,IFK Goteborg,home,win,0-0,78.4,1.833,1500.0,1.9,1-0,won,1309.5
+2026-09-05 21:27:59,1555385,Super League,Grasshoppers 0-0 FC Zurich,45,Grasshoppers,home,win,0-0,72.8,,1008.0,2.5,2-2,lost,-1008.0
+2026-09-05 22:38:14,1558620,Jupiler Pro League,Standard Liege 0-0 Antwerp,45,Standard Liege,home,win,0-0,86.2,,1714.0,2.1,1-0,won,1828.84

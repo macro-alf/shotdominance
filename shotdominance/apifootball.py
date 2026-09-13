@@ -181,6 +181,46 @@ def parse_stats(rows, team_id):
     return out, xg_seen
 
 
+def penalties(api, fid):
+    """Penalty ATTEMPTS in a fixture, from /fixtures/events. One request.
+
+    Returns [{"minute": int, "team": team_id, "scored": bool, "key": str}, ...]
+
+    Verified against the real payload for Genoa v Frosinone (1550119,
+    2026-09-12), which produced exactly the case this exists for:
+
+        44+0  Genoa  Var   Penalty confirmed
+        45+1  Genoa  Goal  Missed Penalty
+
+    Only the `Goal` events are counted. The `Var / Penalty confirmed` row is the
+    AWARD, not the shot - counting both would double-subtract. API-Football
+    reports a converted penalty as detail='Penalty' and any failure (saved or
+    off target) as detail='Missed Penalty'; it does not distinguish the two
+    kinds of failure, which is why `PENALTY_MISSED_ON_TARGET` exists.
+
+    `elapsed` is used as the minute, ignoring `extra`, because that is the clock
+    the monitor's snapshots are keyed on (45+1 is minute 45 to us).
+    """
+    out = []
+    for e in api.get("/fixtures/events", fixture=fid) or []:
+        if (e.get("type") or "").lower() != "goal":
+            continue
+        detail = (e.get("detail") or "").lower()
+        if "penalty" not in detail:
+            continue
+        scored = "missed" not in detail
+        t = e.get("time") or {}
+        minute = t.get("elapsed")
+        if minute is None:
+            continue
+        team = (e.get("team") or {}).get("id")
+        out.append({"minute": int(minute), "team": team, "scored": scored,
+                    # stable identity so the same penalty is never applied twice
+                    "key": "%s:%s:%s:%s" % (minute, t.get("extra") or 0, team,
+                                            "s" if scored else "m")})
+    return out
+
+
 # --- odds -------------------------------------------------------------------
 def live_prices(api):
     """Live full-time-result prices per fixture, keyed by outcome name.

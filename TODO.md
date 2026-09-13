@@ -117,7 +117,46 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
-- [ ] **SAT 12 SEP: STRIP PENALTIES OUT OF THE STATS - SCORED AND MISSED.**
+- [x] **PENALTIES STRIPPED FROM THE STATS — DONE 2026-09-13.**
+  `STRIP_PENALTIES=1`. Penalty attempts, scored and missed, are subtracted from
+  xg/shots/sot/box for BOTH sides before anything else sees the numbers.
+
+  **Verified against the real payload**, Genoa v Frosinone (fixture 1550119):
+      44+0  Genoa  Var   Penalty confirmed     <- the AWARD, ignored
+      45+1  Genoa  Goal  Missed Penalty        <- the SHOT, subtracted
+  Only `Goal` events count; taking the VAR row too would double-subtract.
+
+  **Calibrated from the live rows, not from a textbook value:**
+      44'  xg=0.60 shots=8 sot=2 box=6      <- before
+      45'  xg=1.38 shots=9 sot=2 box=7      <- after
+  So one attempt = shots+1, box+1, xg+0.78, and sot UNCHANGED. `PENALTY_XG`
+  defaults to 0.78 from that, which also sits inside the standard 0.76-0.79.
+  A converted penalty is on target by definition so it takes sot-1;
+  API-Football does not distinguish a saved miss from a wild one, and in the
+  observed case sot did not move, so `PENALTY_MISSED_ON_TARGET` defaults off.
+  Stripping the case above returns exactly the pre-penalty 44' reading.
+
+  **Quota: the objection did not survive measurement.** The worry was one call
+  per fixture per POLL. Discovery is per fixture per REFRESH instead - measured
+  over 07-12 Sep that is 34-314 extra calls a day, **1-5% more**. The busiest day
+  (12 Sep, 5,860 requests) would land at ~6,174 of 7,500.
+
+  **Two subtleties worth keeping:**
+  - Subtraction happens BEFORE the snapshot is recorded, or the momentum window
+    keeps differencing contaminated history.
+  - A penalty found late is retro-subtracted from snapshots already stored at or
+    after its minute. Without that, a baseline containing the penalty against a
+    corrected current reading would UNDER-report momentum by the penalty's worth.
+  - It is applied to the raw feed reading every poll, so it is idempotent.
+
+  Six tests in `tests/test_engine.py` pin all of this.
+
+  **Still open:** the backtest (Understat) has per-shot penalty flags and the
+  same exclusion should be applied there before any before/after comparison.
+  Nothing has been re-run yet, so every backtest number on file still includes
+  penalties.
+
+- [ ] ~~Original entry, kept for the reasoning.~~
   Asked for by Alf 2026-09-12, off a live case.
 
   **What happened.** Genoa 0-1 Frosinone, one poll apart, nothing else moving:

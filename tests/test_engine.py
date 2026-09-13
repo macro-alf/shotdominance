@@ -362,3 +362,102 @@ def test_checkpoint_closes_once_its_grace_expires():
         api.minute = config.CHECKPOINTS[0] + config.CHECKPOINT_GRACE
         mon.poll()
     assert config.CHECKPOINTS[0] in mon.done["7"]
+
+
+# --- penalties --------------------------------------------------------------
+class _PenApi:
+    """Returns one MISSED penalty for team 10 at 45+1, like Genoa v Frosinone."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def get(self, path, **kw):
+        self.calls += 1
+        return [
+            {"time": {"elapsed": 14, "extra": None}, "team": {"id": 20},
+             "type": "Goal", "detail": "Normal Goal"},
+            {"time": {"elapsed": 44, "extra": None}, "team": {"id": 10},
+             "type": "Var", "detail": "Penalty confirmed"},
+            {"time": {"elapsed": 45, "extra": 1}, "team": {"id": 10},
+             "type": "Goal", "detail": "Missed Penalty"},
+        ]
+
+
+def _pen_monitor(api):
+    mon = engine.Monitor(api, StubTg(), set())
+    mon.history = {}
+    mon.pens = {}
+    return mon
+
+
+def test_penalty_parse_ignores_var_award_and_normal_goals():
+    from shotdominance import apifootball
+    pens = apifootball.penalties(_PenApi(), 1)
+    assert len(pens) == 1
+    assert pens[0]["minute"] == 45 and pens[0]["scored"] is False
+    assert pens[0]["team"] == 10
+
+
+def test_penalty_stripped_restores_the_pre_penalty_reading():
+    # the real Genoa 0-1 Frosinone numbers, 2026-09-12:
+    #   44'  xg=0.60 shots=8 sot=2 box=6   <- before the penalty
+    #   45'  xg=1.38 shots=9 sot=2 box=7   <- after it
+    mon = _pen_monitor(_PenApi())
+    fav = {"xg": 1.38, "shots": 9, "sot": 2, "box": 7}
+    opp = {"xg": 0.37, "shots": 4, "sot": 1, "box": 1}
+    with contextlib.redirect_stdout(io.StringIO()):
+        f, o = mon._strip_penalties(1, 46, fav, opp, fav_id=10, opp_id=20)
+    assert abs(f["xg"] - 0.60) < 1e-9
+    assert (f["shots"], f["sot"], f["box"]) == (8, 2, 6)
+    assert o == opp                      # opponent had no penalty, must not move
+
+
+def test_penalty_subtraction_is_idempotent_across_polls():
+    api = _PenApi()
+    mon = _pen_monitor(api)
+    raw_f = {"xg": 1.38, "shots": 9, "sot": 2, "box": 7}
+    raw_o = {"xg": 0.37, "shots": 4, "sot": 1, "box": 1}
+    with contextlib.redirect_stdout(io.StringIO()):
+        a, _ = mon._strip_penalties(1, 46, dict(raw_f), dict(raw_o), 10, 20)
+        b, _ = mon._strip_penalties(1, 47, dict(raw_f), dict(raw_o), 10, 20)
+    assert a == b                        # same raw feed in, same corrected out
+    assert api.calls == 1                # and no second lookup inside the refresh window
+
+
+def test_penalty_found_late_retro_corrects_history():
+    from shotdominance import rules
+    mon = _pen_monitor(_PenApi())
+    mon.history[1] = [
+        rules.Snapshot(30, {"xg": 0.40, "shots": 5, "sot": 2, "box": 3},
+                       {"xg": 0.30, "shots": 3, "sot": 1, "box": 1}, 0),
+        rules.Snapshot(45, {"xg": 1.38, "shots": 9, "sot": 2, "box": 7},
+                       {"xg": 0.37, "shots": 4, "sot": 1, "box": 1}, 0),
+    ]
+    with contextlib.redirect_stdout(io.StringIO()):
+        mon._strip_penalties(1, 46, {"xg": 1.38, "shots": 9, "sot": 2, "box": 7},
+                             {"xg": 0.37, "shots": 4, "sot": 1, "box": 1}, 10, 20)
+    # the pre-penalty snapshot is untouched, the post-penalty one is corrected,
+    # so the momentum window differences a consistent series
+    assert mon.history[1][0].fav["shots"] == 5
+    assert mon.history[1][1].fav["shots"] == 8
+
+
+def test_scored_penalty_also_removes_a_shot_on_target():
+    cost = engine.Monitor._penalty_cost(scored=True)
+    assert cost["sot"] == 1.0
+    missed = engine.Monitor._penalty_cost(scored=False)
+    assert missed["sot"] == 0.0          # observed: sot did not move on a miss
+    assert missed["shots"] == 1.0 and missed["box"] == 1.0
+
+
+def test_penalties_can_be_switched_off():
+    api = _PenApi()
+    mon = _pen_monitor(api)
+    raw = {"xg": 1.38, "shots": 9, "sot": 2, "box": 7}
+    old = config.STRIP_PENALTIES
+    config.STRIP_PENALTIES = False
+    try:
+        f, _ = mon._strip_penalties(1, 46, dict(raw), dict(raw), 10, 20)
+    finally:
+        config.STRIP_PENALTIES = old
+    assert f == raw and api.calls == 0

@@ -26,6 +26,8 @@ class Monitor:
         self.price_cache = {}    # fid -> (timestamp, odds dict) for carry-forward
         self.stats_cache = {}    # fid -> {'f':(ts,stat), 'o':(ts,stat)} carry-forward
         self.best_conv = {}      # fid -> highest conviction already alerted
+        self.pens = {}           # fid -> {'at': minute last checked, 'seen': set(key),
+                                 #         'sub': {team_id: {metric: amount}}}
         self._now = 0.0
 
         # cross-poll / telegram state (persisted)
@@ -319,6 +321,87 @@ class Monitor:
         self.stats_cache[fid] = lg
         return f, o, carried
 
+    # --- penalties ----------------------------------------------------------
+    @staticmethod
+    def _penalty_cost(scored):
+        """What one penalty attempt adds to the feed's numbers, to be removed."""
+        return {"shots": 1.0, "box": 1.0, "xg": config.PENALTY_XG,
+                "sot": 1.0 if (scored or config.PENALTY_MISSED_ON_TARGET) else 0.0}
+
+    def _strip_penalties(self, fid, minute, fstat, ostat, fav_id, opp_id,
+                         label_hint=("", "")):
+        """Remove penalty attempts from both sides' cumulative stats.
+
+        The subtraction is applied to the RAW feed reading every poll, so it is
+        idempotent - there is no way to double-subtract by running twice.
+        Discovery costs one /fixtures/events call, refreshed every
+        PENALTY_REFRESH_MIN match-minutes rather than every poll.
+
+        A penalty found LATE is also retro-subtracted from any snapshot already
+        recorded at or after its minute, so the momentum window differences a
+        consistent series. Without that, a baseline taken before discovery would
+        still contain the penalty while the current reading no longer did, and
+        the delta would under-report momentum by the penalty's worth.
+        """
+        if not config.STRIP_PENALTIES:
+            return fstat, ostat
+
+        rec = self.pens.setdefault(fid, {"at": None, "seen": set(), "sub": {}})
+        stale = rec["at"] is None or (minute - rec["at"]) >= config.PENALTY_REFRESH_MIN
+        if stale and minute <= config.PENALTY_STOP_MIN:
+            try:
+                found = apifootball.penalties(self.api, fid)
+                rec["at"] = minute
+                for p in found:
+                    if p["key"] in rec["seen"]:
+                        continue
+                    rec["seen"].add(p["key"])
+                    cost = self._penalty_cost(p["scored"])
+                    tot = rec["sub"].setdefault(p["team"], {})
+                    for k, v in cost.items():
+                        tot[k] = tot.get(k, 0.0) + v
+                    side = "fav" if p["team"] == fav_id else (
+                        "opp" if p["team"] == opp_id else None)
+                    if side:
+                        self._retro_strip(fid, p["minute"], side, cost)
+                    who = label_hint[0] if p["team"] == fav_id else label_hint[1]
+                    print("   PENALTY %s %s %s' - stripping %s"
+                          % ("scored" if p["scored"] else "missed", who or p["team"],
+                             p["minute"],
+                             ", ".join("%s-%g" % (k, v) for k, v in sorted(cost.items()) if v)),
+                          flush=True)
+            except Exception as e:                   # never let this stop a poll
+                print("   ! penalty lookup failed: %s" % e, flush=True)
+
+        return (self._less(fstat, rec["sub"].get(fav_id)),
+                self._less(ostat, rec["sub"].get(opp_id)))
+
+    @staticmethod
+    def _less(stat, sub):
+        """stat minus sub, leaving None as None and never going below zero."""
+        if not sub:
+            return stat
+        out = dict(stat)
+        for k, v in sub.items():
+            if out.get(k) is None:
+                continue
+            out[k] = max(0.0, out[k] - v) if k == "xg" else max(0, int(round(out[k] - v)))
+        return out
+
+    def _retro_strip(self, fid, pen_minute, side, cost):
+        """Apply a newly-found penalty to snapshots already recorded at/after it.
+
+        `side` is "fav" or "opp": a Snapshot stores the two teams positionally
+        with no ids, so the caller resolves which one the penalty belongs to.
+        """
+        for snap in self.history.get(fid, []):
+            if snap.minute < pen_minute:
+                continue
+            if side == "fav":
+                snap.fav.update(self._less(snap.fav, cost))
+            else:
+                snap.opp.update(self._less(snap.opp, cost))
+
     # --- firing policy ------------------------------------------------------
     def _fire_decision(self, fid, conv):
         """Whether an eligible signal should actually be sent. Applies the
@@ -481,6 +564,11 @@ class Monitor:
         # reuse the last non-empty stats over a feed gap (before recording history
         # so momentum deltas are not corrupted by a spurious drop to zero)
         fstat, ostat, _carried = self._carry_stats(fid, fstat, ostat)
+        # strip penalty attempts BEFORE history is recorded, or the momentum
+        # window keeps differencing contaminated snapshots
+        fstat, ostat = self._strip_penalties(fid, minute, fstat, ostat,
+                                             fav_id, opp_id, label_hint=(
+                                                 home.get("name"), away.get("name")))
         fav_goals, opp_goals = (hs, as_) if side == "home" else (as_, hs)
 
         h = self.history.setdefault(fid, [])

@@ -121,6 +121,42 @@ STRONG_NEED = _i("STRONG_NEED", 3)
 # which restores the pre-2026-08-24 "momentum OR cumulative" scored branch.
 STRONG_GATE = _i("STRONG_GATE", 1) != 0
 
+# --- penalties --------------------------------------------------------------
+# A penalty is a single binary award, not territorial dominance, and it
+# contaminates THREE metrics at once. Genoa 0-1 Frosinone (2026-09-12), one poll
+# apart with nothing else moving:
+#     45'  xg=0.60[0.70]  shots=8  sot=2  box=6   vol=1/4  conv=56
+#     45'  xg=1.38[0.70]  shots=9  sot=2  box=7   vol=2/4  conv=83
+# +0.78 xG in sixty seconds - more than the whole 45' xG threshold - taking xG
+# from 0.86x the bar to 1.94x, hard against the 2x conviction cap, and flipping
+# xG from unrealised to realised. A MISSED penalty at that: it manufactured
+# evidence of dominance while the score stayed put, which is exactly the state
+# the rule hunts for.
+STRIP_PENALTIES = _i("STRIP_PENALTIES", 1) != 0
+
+# What one penalty attempt contributes, to be subtracted from the raw feed.
+# shots and box are +1 by definition (the spot is inside the area). xG is
+# calibrated from the case above: the feed moved 0.60 -> 1.38, so 0.78, which
+# also sits in the standard 0.76-0.79 range.
+PENALTY_XG = _f("PENALTY_XG", 0.78)
+
+# A converted penalty is on target by definition, so sot -1. A FAILED one may
+# have been saved (on target) or missed the goal (not), and API-Football reports
+# both as 'Missed Penalty' without distinguishing. In the observed case sot did
+# NOT move (2 before, 2 after), so the default assumes off target and leaves sot
+# alone. Set to 1 to treat failures as on target instead.
+PENALTY_MISSED_ON_TARGET = _i("PENALTY_MISSED_ON_TARGET", 0) != 0
+
+# Discovery costs one /fixtures/events call per fixture per refresh. Measured
+# over 07-12 Sep, a per-CHECKPOINT cadence costs 34-314 extra calls a day, i.e.
+# 1-5% more - the TODO feared "one call per fixture per POLL", which is an order
+# of magnitude worse and is not what this does. First fetch happens as soon as a
+# fixture is watched so history is penalty-free from the first snapshot; after
+# that it refreshes every PENALTY_REFRESH_MIN match-minutes and stops once the
+# match is effectively over.
+PENALTY_REFRESH_MIN = _i("PENALTY_REFRESH_MIN", 10)
+PENALTY_STOP_MIN = _i("PENALTY_STOP_MIN", 85)
+
 # CLEAR DOMINANCE GATE (2026-08-23). FC Zurich 1-1 Basel fired with the
 # favourite realising 0 of 4 cumulative metrics while the OPPONENT led on xG
 # (1.12 vs 0.94) - momentum alone carried it through the scored branch. An alert
@@ -428,4 +464,9 @@ PINNED_IDS = {
     ("Czech-Republic", "Czech Liga"): 345,
     ("Germany", "Bundesliga"): 78,
     ("France", "Ligue 1"): 61,
+    # added with the league on 2026-08-31 but the pin was MISSED, so it has been
+    # resolving by name ever since - exactly what PINNED_IDS exists to prevent.
+    # Caught by test_every_league_is_pinned on 2026-09-13. Id confirmed against
+    # a live resolve: "OK Netherlands Eerste Divisie id=89".
+    ("Netherlands", "Eerste Divisie"): 89,
 }
