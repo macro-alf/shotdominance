@@ -30,6 +30,8 @@ class Monitor:
 
         # cross-poll / telegram state (persisted)
         self.acked = set()       # fids with a logged bet -> suppress alerts
+        self.muted = set()       # fids Alf replied "ignore" to -> suppress alerts
+        self.alerted_cp = set()  # "fid:cp" already alerted -> one alert per checkpoint
         self.msg2fid = {}        # telegram message_id -> fid
         self.awaiting = {}       # chat_id -> fid (waiting for stake & price)
         self.bets = []           # blotter rows
@@ -45,7 +47,9 @@ class Monitor:
     # --- persistence --------------------------------------------------------
     def save(self):
         state.save(config.STATE_PATH, {
-            "acked": sorted(self.acked), "msg2fid": self.msg2fid,
+            "acked": sorted(self.acked), "muted": sorted(self.muted),
+            "alerted_cp": sorted(self.alerted_cp),
+            "msg2fid": self.msg2fid,
             "await": self.awaiting, "bets": self.bets, "offset": self.offset})
 
     def load(self):
@@ -53,6 +57,8 @@ class Monitor:
         if not d:
             return
         self.acked.update(d.get("acked", []))
+        self.muted.update(d.get("muted", []))
+        self.alerted_cp.update(d.get("alerted_cp", []))
         self.msg2fid.update({str(k): v for k, v in (d.get("msg2fid") or {}).items()})
         self.awaiting.update(d.get("await") or {})
         self.bets.extend(d.get("bets") or [])
@@ -93,6 +99,20 @@ class Monitor:
                     self.record_bet(fid, float(nums[0]), float(nums[1]))
                 else:
                     self.tg.send("Need two numbers: stake then price, e.g. `650 2.60`")
+                continue
+
+            # IGNORE - silence a fixture without recording a bet. Alerts now
+            # repeat at every checkpoint (see _fire_decision), so there has to
+            # be a way to say "seen it, not betting" that is not "bet done".
+            if text.lower().strip() in ("ignore", "ignored", "skip") or                     text.lower().startswith("ignore"):
+                fid = self.msg2fid.get(reply_to)
+                if not fid:
+                    self.tg.send("Reply *to the alert message itself* so I know "
+                                 "which match to ignore. Nothing changed.")
+                    continue
+                self.muted.add(fid)
+                self.tg.send("Ignored. No further alerts for this match, and no "
+                             "bet recorded.")
                 continue
 
             # stage 1 - acknowledgement on a specific alert
@@ -302,17 +322,24 @@ class Monitor:
     # --- firing policy ------------------------------------------------------
     def _fire_decision(self, fid, conv):
         """Whether an eligible signal should actually be sent. Applies the
-        conviction floor and the only-re-fire-on-a-new-high rule. Returns
-        (fire, reason_when_not_firing)."""
+        conviction floor only. Returns (fire, reason_when_not_firing).
+
+        CHANGED 2026-09-07 on Alf's instruction: a signal now re-fires at EVERY
+        checkpoint it is still valid at, and is silenced only by replying
+        "bet done" or "ignore" to the alert on Telegram. The old rule repeated
+        only on a NEW conviction high, which meant a fixture that alerted at 90
+        and then sat at 85 went silent for the rest of the match even though 85
+        is a strong signal -- and if the first alert was missed there was no
+        second chance. Suppression is now Alf's decision, not the engine's.
+
+        NOTE this makes the exposure fix below load-bearing: without it a
+        repeating alert eats its own reserved room and decays 2000 -> 1000 -> 0.
+        """
         if conv < config.CONV_FIRE_MIN:
             # one decimal, not zero: %.0f printed "conviction 50 below 50 floor"
             # for a true 49.6 (Mainz, 2026-08-29 cp75), which reads as a bug
             return False, ("no signal: conviction %.1f below %.0f floor"
                            % (conv, config.CONV_FIRE_MIN))
-        prev = self.best_conv.get(fid)
-        if prev is not None and conv <= prev:
-            return False, ("signal held: conviction %.0f not above prior %.0f, "
-                           "not repeating" % (conv, prev))
         return True, None
 
     # --- one poll -----------------------------------------------------------
@@ -513,8 +540,9 @@ class Monitor:
         # With PRICE_GATE off the quoted price no longer vetoes a signal - it is
         # a bookmaker number and the bet goes on an exchange at a better one.
         price_ok = in_band or not config.PRICE_GATE
-        if fid in self.acked:
-            print("       cp%d: signal suppressed - bet already logged" % cp,
+        if fid in self.acked or fid in self.muted:
+            print("       cp%d: signal suppressed - %s" %
+                  (cp, "bet already logged" if fid in self.acked else "ignored by Alf"),
                   flush=True)
             return
         if not (ev.ok and price_ok):
@@ -538,6 +566,26 @@ class Monitor:
         if not fire:
             print("       cp%d %s" % (cp, reason), flush=True)
             return
+
+        # ONE ALERT PER CHECKPOINT. Checkpoints are 5 minutes apart, so this is
+        # the repeat cadence: 45, 50, 55 ... not once per poll.
+        #
+        # Added 2026-09-12. The block below deliberately does NOT spend a
+        # checkpoint on an unsizable (odds=n/a) alert, and its comment relied on
+        # "_fire_decision's rising-only rule stops it nagging" -- which was
+        # removed on 2026-09-07 when alerts were made to repeat. With both
+        # changes in place an unpriced signal re-fired on EVERY poll: Le Havre
+        # 0-0 Angers sent six identical conv=72 stake=0 alerts inside one
+        # checkpoint window. Spending the checkpoint is still withheld (a price
+        # arriving seconds later must have something to fire on); what is
+        # tracked here is only whether Alf has ALREADY been told about this
+        # checkpoint.
+        cp_key = "%s:%d" % (fid, cp)
+        if cp_key in self.alerted_cp:
+            print("       cp%d: already alerted this checkpoint, not repeating"
+                  % cp, flush=True)
+            return
+        self.alerted_cp.add(cp_key)
         # Spend the checkpoint - but NOT if the alert was unsizable. With no live
         # price the signal still fires (price_ok is True when price is None) and
         # reaches Telegram with stake 0, which is information but not a bet. If
@@ -550,7 +598,10 @@ class Monitor:
         if price is not None:
             done.add(cp)
 
-        open_total = sum(self.open_pos.values())
+        # exclude this fixture's own reserved exposure: the alerts for one
+        # fixture are ALTERNATIVES, not additive bets, so a repeat must not
+        # be starved by its own earlier suggestion. Mirrors quote() above.
+        open_total = sum(v for k, v in self.open_pos.items() if k != fid)
         # Never size off an out-of-band quote: base = TARGET_WIN/(price-1), so a
         # 1.20 would imply a 5000 base and suggest the per-bet cap on a price
         # nobody should take. Clamp into the band instead - the alert reports

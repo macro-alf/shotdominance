@@ -4,11 +4,31 @@ ceiling / exposure clamps from HANDOVER.md.
 from shotdominance import config, sizing
 
 
-def test_target_win_base():
-    # base stake targets TARGET_WIN profit: base*(price-1) == TARGET_WIN
-    for price in (1.80, 2.50, 4.00):
-        s = sizing.size(price, conv=config.CONV_MID)
-        assert abs(s["base"] * (price - 1.0) - config.TARGET_WIN) < 1e-6
+def test_stake_is_flat_in_price():
+    """Changed 2026-09-07: the stake is a conviction ladder, flat in price.
+
+    Alf's requirement: a longer price must not shrink the bet at the same
+    conviction. Kelly did exactly that (f = EV/b), so it no longer sets the
+    stake -- it is computed and reported only.
+    """
+    for conv in (70, 80, 100):
+        stakes = [sizing.size(price, conv)["stake"]
+                  for price in (1.75, 2.00, 2.50, 3.00, 4.00)]
+        assert max(stakes) - min(stakes) < 1e-6, (conv, stakes)
+
+
+def test_conviction_ladder_endpoints():
+    # the firing floor earns STAKE_AT_FLOOR, full conviction earns STAKE_AT_TOP
+    assert abs(sizing.size(2.00, config.CONV_FIRE_MIN)["stake"]
+               - config.STAKE_AT_FLOOR) < 1e-6
+    assert abs(sizing.size(2.00, config.CONV_STAKE_TOP)["stake"]
+               - config.STAKE_AT_TOP) < 1e-6
+    # and it rises monotonically between them
+    prev = -1.0
+    for conv in range(int(config.CONV_FIRE_MIN), int(config.CONV_STAKE_TOP) + 1):
+        cur = sizing.size(2.00, conv)["stake"]
+        assert cur >= prev - 1e-9
+        prev = cur
 
 
 def test_conviction_multiplier_endpoints():
@@ -27,13 +47,12 @@ def test_stake_never_exceeds_per_bet_cap():
         assert 0.0 <= p <= 0.99
 
 
-def test_kelly_is_a_ceiling():
-    # very high conviction wants a large stake; it must still be bounded by the
-    # Kelly stake when Kelly is the smaller of the two.
+def test_kelly_is_reported_but_no_longer_binds():
+    # Kelly is still computed for the alert and for later comparison, but it
+    # does not cap the stake any more.
     s = sizing.size(2.00, conv=100)
-    assert s["stake"] <= s["kelly"] + 1e-9
-    if s["kelly"] < s["want"]:
-        assert s["bound"] == "Kelly"
+    assert "kelly" in s and "p" in s and "f" in s
+    assert s["bound"] in ("conviction ladder", "exposure cap")
 
 
 def test_exposure_room_clamps_stake():
