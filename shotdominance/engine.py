@@ -26,6 +26,8 @@ class Monitor:
         self.price_cache = {}    # fid -> (timestamp, odds dict) for carry-forward
         self.stats_cache = {}    # fid -> {'f':(ts,stat), 'o':(ts,stat)} carry-forward
         self.best_conv = {}      # fid -> highest conviction already alerted
+        self.last_conv = {}      # fid -> last conviction, for adaptive polling
+        self.skipped = 0         # fixtures skipped this poll as too dull
         self.pens = {}           # fid -> {'at': minute last checked, 'seen': set(key),
                                  #         'sub': {team_id: {metric: amount}}}
         self._now = 0.0
@@ -241,9 +243,19 @@ class Monitor:
         lines = ["SIGNAL  conviction %.0f/100" % ev.conv,
                  ctx["label"], "%s - %d'" % (ctx["league"], ctx["minute"]), "",
                  back]
+        need = ctx.get("need")
+        winp = ctx.get("winp")
+        edge_line = ("MINIMUM PRICE FOR AN EDGE: %.2f   (%s, %d', P(win) %.0f%%, "
+                     "%.0f%% margin over break-even)"
+                     % (need, ctx.get("state", "?"), ctx["minute"], 100 * winp,
+                        config.EDGE_MARGIN * 100)) if need else ""
         if price is None:
-            lines += ["Price: NOT AVAILABLE - check manually", "",
-                      "Stake: cannot size without a price"]
+            lines += ["Price: NOT AVAILABLE - check manually"]
+            if edge_line:
+                lines += ["  " + edge_line,
+                          "  Anything at or above that price is worth taking; "
+                          "below it, skip."]
+            lines += ["", "Stake: cannot size without a price"]
         else:
             band = "" if config.PRICE_FLOOR <= price <= config.PRICE_CEIL else (
                 "  ** BOOKMAKER QUOTE IS OUTSIDE %.2f-%.2f - the stake below is "
@@ -251,6 +263,8 @@ class Monitor:
                 "exchange or skip it. **" % (config.PRICE_FLOOR, config.PRICE_CEIL))
             lines += ["Price: %.2f  (%s; pre-match fav %.2f)"
                       % (price, price_tag, pm)]
+            if edge_line:
+                lines += ["  " + edge_line]
             if band:
                 lines += [band]
             lines += ["",
@@ -320,6 +334,32 @@ class Monitor:
         f, o = resolve(fstat, "f"), resolve(ostat, "o")
         self.stats_cache[fid] = lg
         return f, o, carried
+
+    # --- adaptive polling ---------------------------------------------------
+    def _due_for_poll(self, fid, minute):
+        """Whether this fixture is worth a /fixtures/statistics call this cycle.
+
+        Decided from the minute alone, which the live-fixtures list already
+        gave us, so a skip costs nothing. Never skips inside a checkpoint's
+        grace window: that guarantees no checkpoint is missed AND that every
+        fixture's conviction is refreshed at least once per checkpoint, so
+        nothing gets stranded in the slow tier after it improves.
+        """
+        if not config.SLOW_POLL:
+            return True
+        conv = self.last_conv.get(fid)
+        if conv is None:
+            return True                      # never measured - must look
+        for cp in config.CHECKPOINTS:
+            if cp <= minute <= cp + config.CHECKPOINT_GRACE:
+                return True                  # at or inside a checkpoint window
+        if conv < config.SLOW_POLL_LOW_CONV:
+            every = config.SLOW_POLL_LOW_EVERY
+        elif conv < config.SLOW_POLL_MID_CONV:
+            every = config.SLOW_POLL_MID_EVERY
+        else:
+            return True
+        return (self.polls % every) == 0
 
     # --- penalties ----------------------------------------------------------
     @staticmethod
@@ -459,9 +499,11 @@ class Monitor:
         print("   pacing: %d calls in %.0fs, %.0fs waiting, %d retries"
               % (self.api.calls - calls_before, time.time() - t0,
                  self.api.throttled, self.api.retries), flush=True)
-        print("poll: %d live, %d watched, %d requests total%s"
+        print("poll: %d live, %d watched, %d requests total%s%s"
               % (len(fixtures), watched, self.api.reqs,
+                 "" if not self.skipped else "   [%d dull skipped]" % self.skipped,
                  "" if self.xg_seen else "   [xG NOT SEEN YET]"), flush=True)
+        self.skipped = 0
 
     def _quota_guard(self):
         """Watch the day's remaining allowance and slow down before hitting it.
@@ -557,6 +599,9 @@ class Monitor:
 
         fav_id = (home if side == "home" else away).get("id")
         opp_id = (away if side == "home" else home).get("id")
+        if not self._due_for_poll(fid, minute):
+            self.skipped += 1
+            return                           # still watched, just not re-measured
         rows = self.api.get("/fixtures/statistics", fixture=fid)
         fstat, seen_f = apifootball.parse_stats(rows, fav_id)
         ostat, seen_o = apifootball.parse_stats(rows, opp_id)
@@ -592,6 +637,7 @@ class Monitor:
 
         ev = rules.evaluate(self.history, fid, minute, fstat, ostat,
                             fav_goals, opp_goals)
+        self.last_conv[fid] = ev.conv
         # When the favourite is behind the tradeable market is the double chance
         # (win or draw), not an outright win from behind. When level it is the
         # win market as before.
@@ -724,7 +770,9 @@ class Monitor:
         ctx = dict(label=label, league=lg.get("name"), minute=minute,
                    fav=fav_name, side=side, score="%d-%d" % (hs, as_),
                    conv=ev.conv, price=price, market=pinfo["market"],
-                   kind=pinfo["kind"], derived=pinfo["derived"])
+                   kind=pinfo["kind"], derived=pinfo["derived"],
+                   need=need, state=state,
+                   winp=rules.win_probability(state, minute, ev.conv))
         self.last_alert[fid] = ctx
         self.best_conv[fid] = ev.conv
         mid = self.tg.send(self.alert_text(ctx, ev, sz, price, pm))

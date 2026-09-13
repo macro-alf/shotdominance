@@ -160,6 +160,25 @@ WINP_STRONG_BONUS = _f("WINP_STRONG_BONUS", 0.09)
 # not optional. Raise it to bet less and better.
 EDGE_MARGIN = _f("EDGE_MARGIN", 0.10)
 
+# --- adaptive polling -------------------------------------------------------
+# Alf 2026-09-13: pace the dull fixtures much more slowly instead of spending
+# the same quota on all of them. A goalless favourite realising nothing at
+# conviction 15 costs exactly as much per poll as one at 75, and 62-fixture
+# Sundays plan at 97% of the allowance before penalty lookups are counted.
+#
+# The decision is FREE: the minute comes from the live-fixtures list we already
+# fetch, so a skipped fixture costs no /fixtures/statistics call at all.
+#
+# A fixture is NEVER skipped inside a checkpoint's grace window, so no
+# checkpoint can be missed and every fixture has its conviction refreshed at
+# least once per checkpoint - which is also what stops a fixture being stranded
+# in the slow tier after it improves.
+SLOW_POLL = _i("SLOW_POLL", 1) != 0
+SLOW_POLL_LOW_CONV = _f("SLOW_POLL_LOW_CONV", 30.0)   # below this, poll rarely
+SLOW_POLL_LOW_EVERY = _i("SLOW_POLL_LOW_EVERY", 4)
+SLOW_POLL_MID_CONV = _f("SLOW_POLL_MID_CONV", 45.0)   # below this, poll half as often
+SLOW_POLL_MID_EVERY = _i("SLOW_POLL_MID_EVERY", 2)
+
 # --- penalties --------------------------------------------------------------
 # A penalty is a single binary award, not territorial dominance, and it
 # contaminates THREE metrics at once. Genoa 0-1 Frosinone (2026-09-12), one poll
@@ -288,7 +307,8 @@ CONV_CAP = _f("CONV_CAP", 2.0)
 # which is the intent. Note this also sets the bottom of the stake ladder
 # (sizing.size reads CONV_FIRE_MIN), so the weakest permissible signal still
 # sizes at STAKE_AT_FLOOR.
-CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 50.0)
+# Alf 2026-09-13: nothing below 60 fires, whatever the price says.
+CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 60.0)
 # RAISED 60 -> 70 on 2026-09-07, on Alf's instruction, to give the WEAKEST
 # signal that can fire a stake worth placing. Under half-Kelly with
 # conviction inside p, conviction 69.7 at odds 2.00 sizes to exactly 1000;

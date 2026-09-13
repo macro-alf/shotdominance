@@ -461,3 +461,55 @@ def test_penalties_can_be_switched_off():
     finally:
         config.STRIP_PENALTIES = old
     assert f == raw and api.calls == 0
+
+
+# --- adaptive polling -------------------------------------------------------
+def _slow_monitor():
+    mon = engine.Monitor(None, None, set())
+    mon.last_conv = {}
+    mon.polls = 1
+    return mon
+
+
+def test_unmeasured_fixture_is_always_polled():
+    mon = _slow_monitor()
+    assert mon._due_for_poll("new", 33) is True
+
+
+def test_dull_fixture_is_polled_less_often():
+    mon = _slow_monitor()
+    mon.last_conv["dull"] = 15.0            # below SLOW_POLL_LOW_CONV
+    polled = [p for p in range(1, 13)
+              if (setattr(mon, "polls", p) or mon._due_for_poll("dull", 33))]
+    assert len(polled) == 12 // config.SLOW_POLL_LOW_EVERY
+
+
+def test_promising_fixture_is_polled_every_cycle():
+    mon = _slow_monitor()
+    mon.last_conv["good"] = 70.0
+    for p in range(1, 8):
+        mon.polls = p
+        assert mon._due_for_poll("good", 33) is True
+
+
+def test_a_checkpoint_window_is_never_skipped():
+    # otherwise a dull fixture could miss the only moment it is judged, and its
+    # conviction would never refresh to escape the slow tier
+    mon = _slow_monitor()
+    mon.last_conv["dull"] = 5.0
+    for cp in config.CHECKPOINTS:
+        for m in range(cp, cp + config.CHECKPOINT_GRACE + 1):
+            mon.polls = 3                    # a cycle it would otherwise skip
+            assert mon._due_for_poll("dull", m) is True, (cp, m)
+
+
+def test_slow_poll_can_be_switched_off():
+    mon = _slow_monitor()
+    mon.last_conv["dull"] = 5.0
+    old = config.SLOW_POLL
+    config.SLOW_POLL = False
+    try:
+        mon.polls = 3
+        assert mon._due_for_poll("dull", 33) is True
+    finally:
+        config.SLOW_POLL = old
