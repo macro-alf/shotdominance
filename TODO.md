@@ -117,6 +117,56 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **MON 14 SEP: ADD PRE-MATCH PRICE TO THE WIN-PROBABILITY MODEL.**
+  Alf asked 2026-09-13 whether the implied odds condition on how dominant the
+  side is, and whether being a heavy pre-match favourite changes things. First
+  answer: yes, it conditions on dominance (the fit is on rule_ok, worth ~+16pp).
+  Second answer: **pre-match price matters MORE than the evidence does, and the
+  model does not use it at all.**
+
+  Level state, 45-49', rule passed:
+
+      pre-match price     P(win)    n     model currently says
+      <1.35 heavy fav      67.4%    43          61.3%
+      1.35-1.70            64.6%    79          60.3%
+      1.70-2.10            55.1%    49          59.8%
+      >2.10                50.0%    64          59.9%
+
+  A 17-point spread, and the model returns ~60% for all of them. Restricted to
+  strong evidence (vol>=3 and mom>=3) the spread is 24 points:
+
+      <1.50 heavy fav      73.2%    n=56
+      1.50-2.10            58.8%    n=51
+      >2.10                48.7%    n=39
+
+  For comparison, the EVIDENCE effect at the same minute is small by contrast:
+  rule passed 59.1% (n=235) -> vol>=3 and mom>=3 61.6% (n=146) -> a perfect
+  4/4+4/4 63.3% (n=49). Most of the value is in passing the rule at all
+  (43.1% -> 59.1%), not in passing it emphatically.
+
+  **The error runs both ways, which is why it matters:**
+  - heavy favourites: model 61%, actual 67-73% -> required price TOO HIGH, we
+    refuse bets that are fine
+  - marginal favourites: model 60%, actual 50% -> required price TOO LOW, we
+    accept bets that lose
+
+  **Worked example, live 2026-09-13.** Galatasaray 0-0 Kocaelispor, pre-match
+  1.22, vol 4/4 mom 4/4 at 50', quoted 1.33. Live model: 64%, needs 1.75,
+  blocked by 0.42. With pre-match price as an input: ~73%, needs ~1.38, blocked
+  by 0.05. Same decision today, opposite decision at 1.40.
+
+  **Why this variable and not another:** the market's pre-match price is a
+  genuine external estimate of team strength, which is exactly what "how likely
+  is this side to score" needs and what shot counts only proxy. It is also free
+  - `pm=` is already on every log line and every backtest row.
+
+  **Protocol.** This is the FOURTH correction to this model in one afternoon
+  (linear fit wrongly blamed, evidence bonus banded, base double-counted, now
+  this). Fit it, print the full cell table with n, and show it BEFORE anything
+  goes live. Cells here are 39-79, so a three-way interaction of
+  price x minute x evidence will be too thin - expect to fit price as a separate
+  additive term, not a full cross.
+
 - [x] **TIME MOVED OUT OF CONVICTION AND INTO THE PRICE — DONE 2026-09-13.**
   Alf's design. The old time factor multiplied conviction by 1.333 at 45'
   falling to 1.000 at 75' and then compared it to a FIXED floor, which quietly
