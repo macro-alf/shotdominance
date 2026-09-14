@@ -464,10 +464,15 @@ def test_penalties_can_be_switched_off():
 
 
 # --- adaptive polling -------------------------------------------------------
-def _slow_monitor():
+def _slow_monitor(quota_frac=None):
+    """A monitor with adaptive polling ARMED, i.e. the day's quota already past
+    SLOW_POLL_FROM_QUOTA. Below that threshold nothing is ever skipped, so the
+    tiering tests have to put it in the state where tiering applies."""
     mon = engine.Monitor(None, None, set())
     mon.last_conv = {}
     mon.polls = 1
+    mon.quota_frac = (config.SLOW_POLL_FROM_QUOTA + 0.10
+                      if quota_frac is None else quota_frac)
     return mon
 
 
@@ -513,3 +518,29 @@ def test_slow_poll_can_be_switched_off():
         assert mon._due_for_poll("dull", 33) is True
     finally:
         config.SLOW_POLL = old
+
+
+def test_nothing_is_skipped_while_the_quota_is_healthy():
+    # Alf 2026-09-14: the slow tiers are a RESCUE. They were throttling from the
+    # first poll of the day - Inter 0-2 down to Udinese, a 1.18 pre-match
+    # favourite, got 3 statistics calls in 21 minutes on 15% quota.
+    mon = _slow_monitor(quota_frac=0.0)
+    mon.last_conv["dull"] = 5.0
+    assert all(mon._due_for_poll("dull", 33) for _ in range(12))
+    mon.quota_frac = config.SLOW_POLL_FROM_QUOTA - 0.01
+    assert mon._due_for_poll("dull", 33) is True
+
+
+def test_skipping_starts_once_the_quota_threshold_is_crossed():
+    mon = _slow_monitor(quota_frac=config.SLOW_POLL_FROM_QUOTA)
+    mon.last_conv["dull"] = 15.0
+    polled = [p for p in range(1, 13)
+              if (setattr(mon, "polls", p) or mon._due_for_poll("dull", 33))]
+    assert len(polled) == 12 // config.SLOW_POLL_LOW_EVERY
+
+
+def test_a_checkpoint_window_is_never_skipped_even_when_armed():
+    mon = _slow_monitor()
+    mon.last_conv["dull"] = 1.0
+    mon.polls = 3                                # not a multiple of LOW_EVERY
+    assert mon._due_for_poll("dull", config.CHECKPOINTS[0]) is True

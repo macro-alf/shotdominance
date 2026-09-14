@@ -46,6 +46,7 @@ class Monitor:
         self.feed_alerted = 0.0  # when we last said so on Telegram
         self.polls = 0           # polls this run, for the periodic quota check
         self.quota_warned = False
+        self.quota_frac = 0.0    # day's allowance used, gates SLOW_POLL
         self.poll_seconds = config.POLL_SECONDS   # monitor.py sleeps by this
 
     # --- persistence --------------------------------------------------------
@@ -347,6 +348,11 @@ class Monitor:
         """
         if not config.SLOW_POLL:
             return True
+        # A RESCUE, not the default. Below SLOW_POLL_FROM_QUOTA of the day's
+        # allowance there is nothing to save and every watched fixture is
+        # measured every cycle; see the block at config.SLOW_POLL_FROM_QUOTA.
+        if self.quota_frac < config.SLOW_POLL_FROM_QUOTA:
+            return True
         conv = self.last_conv.get(fid)
         if conv is None:
             return True                      # never measured - must look
@@ -522,7 +528,15 @@ class Monitor:
         if used is None:
             return
         left = max(limit - used, 0)
+        was = self.quota_frac
+        self.quota_frac = (float(used) / limit) if limit else 0.0
         print("   quota: %d of %d used, %d left" % (used, limit, left), flush=True)
+        if config.SLOW_POLL and was < config.SLOW_POLL_FROM_QUOTA <= self.quota_frac:
+            print("   quota at %.0f%% - adaptive polling ARMED (was off)"
+                  % (100 * self.quota_frac), flush=True)
+        elif config.SLOW_POLL and self.quota_frac < config.SLOW_POLL_FROM_QUOTA <= was:
+            print("   quota back under %.0f%% - adaptive polling stood down"
+                  % (100 * config.SLOW_POLL_FROM_QUOTA), flush=True)
         if left > config.QUOTA_WARN:
             return
 

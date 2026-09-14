@@ -246,6 +246,13 @@ MIN_BACKABLE_ODDS = _f("MIN_BACKABLE_ODDS", 1.80)
 # least once per checkpoint - which is also what stops a fixture being stranded
 # in the slow tier after it improves.
 SLOW_POLL = _i("SLOW_POLL", 1) != 0
+# Alf 2026-09-14: the slow tiers are a RESCUE, not the normal mode. They were
+# throttling from the first poll of the day, which on a 19-fixture Monday meant
+# Inter 0-2 down to Udinese - a 1.18 pre-match favourite, the best configuration
+# this system looks for - got 3 statistics calls in 21 minutes while the quota
+# sat at 15% used. Skipping is now off until the day's allowance is genuinely at
+# risk. Below the threshold every watched fixture is measured every cycle.
+SLOW_POLL_FROM_QUOTA = _f("SLOW_POLL_FROM_QUOTA", 0.65)
 SLOW_POLL_LOW_CONV = _f("SLOW_POLL_LOW_CONV", 30.0)   # below this, poll rarely
 SLOW_POLL_LOW_EVERY = _i("SLOW_POLL_LOW_EVERY", 4)
 SLOW_POLL_MID_CONV = _f("SLOW_POLL_MID_CONV", 45.0)   # below this, poll half as often
