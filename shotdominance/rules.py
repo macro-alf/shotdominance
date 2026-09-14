@@ -19,6 +19,7 @@ stands in for the window - and nothing fires, because an alert would then show
 cumulative totals under a "Last 30 min" heading and invite a bet on evidence
 that was never measured.
 """
+import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -217,30 +218,53 @@ def time_remaining_frac(minute):
     return max(0.0, min(1.0, (config.MATCH_END - minute) / span))
 
 
-def win_probability(state, minute, conv):
-    """Estimated P(the bet wins) from the scoreline state, the clock and the
-    evidence score. Fitted to 2020-23 with penalties stripped; see the block at
-    config.MIN_ODDS_GATE for the measured table this approximates.
+def _pm_adjustment(pm):
+    """Additive P(win) correction for how short the favourite was PRE-MATCH.
+
+    Interpolated in ln(price) between the measured bucket centroids and clamped
+    outside them - see the block at config.WINP_PM_POINTS for why a log-linear
+    fit was rejected. `pm` None means no pre-match price was available, which is
+    treated as no adjustment rather than as a guess.
+    """
+    if pm is None or pm <= 0:
+        return 0.0
+    pts, adj = config.WINP_PM_POINTS, config.WINP_PM_ADJ
+    x = math.log(pm)
+    if x <= math.log(pts[0]):
+        return adj[0]
+    if x >= math.log(pts[-1]):
+        return adj[-1]
+    for i in range(len(pts) - 1):
+        lo, hi = math.log(pts[i]), math.log(pts[i + 1])
+        if lo <= x <= hi:
+            t = (x - lo) / (hi - lo)
+            return adj[i] + t * (adj[i + 1] - adj[i])
+    return 0.0
+
+
+def win_probability(state, minute, conv, pm=None):
+    """Estimated P(the bet wins) from the scoreline state, the clock, the
+    evidence score and the PRE-MATCH price. Fitted to 2020-23 with penalties
+    stripped; see the block at config.WINP_LEVEL_BASE for the measured tables.
 
     `state` is "level" or "behind" - behind means the double chance, which
     decays far more slowly with time because a draw settles it as a win.
+    `pm` is the favourite's pre-match decimal price, and is worth more than the
+    evidence is: heavy favourites run +13pp over the price-blind fit, marginal
+    ones -7pp. Omitting it reproduces the price-blind model.
     """
     if state == "behind":
         p = config.WINP_BEHIND_BASE + config.WINP_BEHIND_SLOPE * (minute - 45.0)
     else:
         p = config.WINP_LEVEL_BASE + config.WINP_LEVEL_SLOPE * (minute - 45.0)
     if conv >= config.WINP_STRONG_FROM:
-        # the bonus decays to nothing by 70': see config.WINP_BONUS_LATE
-        if minute >= config.WINP_LATE_FROM:
-            p += config.WINP_BONUS_LATE
-        elif minute >= config.WINP_MID_FROM:
-            p += config.WINP_BONUS_MID
-        else:
-            p += config.WINP_BONUS_EARLY
-    return max(0.02, min(0.95, p))
+        # flat in time: measured +10.7pp to 65' and +11.4pp from 70'
+        p += config.WINP_STRONG_BONUS
+    p += _pm_adjustment(pm)
+    return max(0.02, min(config.WINP_MAX, p))
 
 
-def min_price(state, minute, conv):
+def min_price(state, minute, conv, pm=None):
     """The shortest price worth taking, given how likely the bet is to win.
 
     Break-even against commission is  1 + (1-p) / (p * (1-c))  -- the stake is
@@ -249,7 +273,7 @@ def min_price(state, minute, conv):
     worth the trouble whatever the model says, and with EDGE_MARGIN now 0 the
     floor is the only guard against the probability being optimistic.
     """
-    p = win_probability(state, minute, conv)
+    p = win_probability(state, minute, conv, pm)
     breakeven = 1.0 + (1.0 - p) / (p * (1.0 - config.COMMISSION))
     return max(breakeven * (1.0 + config.EDGE_MARGIN), config.MIN_BACKABLE_ODDS)
 

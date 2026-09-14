@@ -117,7 +117,30 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
-- [ ] **MON 14 SEP: ADD A CHECKPOINT AT 80.** Asked for by Alf 2026-09-13.
+- [x] **MON 14 SEP: ADD A CHECKPOINT AT 80 - MEASURED, DECIDED AGAINST 2026-09-14.**
+  The blocker below is RESOLVED: the feature table was rebuilt with checkpoints at
+  80 and 85 (34,734 rows, from the local cache, no API calls), so 80' is measured
+  rather than extrapolated. The line holds there (residual +1.2pp level, +1.3pp
+  behind) and breaks at 85' (-6.9 / -9.2), so 85 is out on its own terms.
+
+  **But the economics say no.** Of 9 distinct fixture-days since launch that
+  reached 79-88' passing evidence with conviction >=60, only 3 clear the price
+  bar, and all 3 are dead matches the market has written off:
+
+      Modena 0-1 Avellino          79'   2.50 vs 3.46   fail
+      Heerenveen 0-0 Telstar       79'   2.60 vs 3.63   fail
+      Nordsjaelland 0-0 Silkeborg  79'   2.30 vs 2.91   fail
+      Feyenoord 2-2 GO Ahead       82'   2.75 vs 2.90   fail
+      Venezia 0-2 Lecce            82'  17.00 vs 4.26   CLEARS
+      Cercle Brugge 1-3 Truiden    79'  15.00 vs 3.96   CLEARS
+
+  cp80 would add zero real bets and three bets on matches priced 15-17, where the
+  market disagreeing that violently with the model means the model is wrong.
+  **Spun out as a NEW item**: `MAX_ODDS` gates the PRE-MATCH price only, and with
+  `PRICE_GATE` off there is no live ceiling at all - a 1-3 deficit at 15.00 would
+  be backed today if a checkpoint were open. That hole exists with or without cp80.
+
+- [x] ~~Original entry.~~ Asked for by Alf 2026-09-13.
   Checkpoints stop at 75, so a fixture that becomes worth backing after 79' can
   never be alerted. Heerenveen 0-0 Telstar the same day is the case: cp75 expired
   at 79' with the price at 2.60 against 3.85 needed, and by 85' the price had
@@ -168,7 +191,21 @@ for context. Last updated 2026-08-29.
   observations behind the late bonus. Only then decide what cp80's bar should
   be, and only then whether cp80 is worth adding at all.
 
-- [ ] **MON 14 SEP: PUSH THE QUOTA SAVING FURTHER DOWN THE CONVICTION CURVE.**
+- [ ] **MON 14 SEP: QUOTA SAVING - TWO OF THE THREE OPTIONS ARE DEAD (2026-09-14).**
+  - **(c) widen the skip to the odds call: IMPOSSIBLE.** Odds are a single bulk
+    `apifootball.live_prices` call per cycle (`engine.py:472`), outside the
+    per-fixture loop. Skipping a fixture saves no odds request. Closed.
+  - **(b) stop polling once a fixture CANNOT fire: UNSAFE.** The premise is false.
+    Fixtures two goals down reached conviction 60 in **76 rows**, three down in 7.
+    Only a four-goal deficit is genuinely dead and that is 0.3% of rows.
+  - **(a) a fourth tier below conviction 15: the only real saving.** 35% of rows,
+    so halving their rate saves roughly 17% of statistics calls. NOT YET SHIPPED.
+    Caveat worth knowing before it is: conviction level carries NO information
+    about whether a fixture later reaches 60 - flat at ~14% whether the cut is at
+    10, 15, 20, 25 or 30 (785 fixture-days). The tier is a safe way to spend less,
+    not a smart one.
+
+- [x] ~~Original entry.~~
   Asked for by Alf 2026-09-13. Adaptive polling shipped today (SLOW_POLL: <30
   every 4th cycle, <45 every 2nd) and worked - up to 10 of 20 watched fixtures
   skipped per cycle, and a 62-fixture Sunday planned at 7,298 of 7,496 finished
@@ -197,7 +234,20 @@ for context. Last updated 2026-08-29.
   by `test_a_checkpoint_window_is_never_skipped`.
 
 
-- [ ] **MON 14 SEP: ADD PRE-MATCH PRICE TO THE WIN-PROBABILITY MODEL.**
+- [x] **MON 14 SEP: ADD PRE-MATCH PRICE TO THE WIN-PROBABILITY MODEL - DONE 2026-09-14.**
+  Shipped with a flat evidence bonus replacing the banded one, the probability
+  capped at 0.75, and `MIN_BACKABLE_ODDS` 1.85 -> 1.80 (Alf). Fair
+  leave-one-season-out: 0.6694 without price -> 0.6609 with. See the blocks at
+  `config.WINP_PM_POINTS` and `config.WINP_MAX`.
+
+  **A defect was found on the way and fixed in the same commit:**
+  `WINP_BONUS_LATE = 0.0` was wrong. It rested on one cell of n=30; refitting the
+  band gives +8.3pp, and with 80/85 measured the late bonus is +11.4pp. The bonus
+  is positive at every checkpoint and flat in time, so it is now one constant.
+  Galatasaray 0-0 Kocaelispor was charged 2.66 at cp70 on 2026-09-13 because of
+  this; the correct bar was the floor, and the side won 1-0.
+
+- [x] ~~Original entry.~~
   Alf asked 2026-09-13 whether the implied odds condition on how dominant the
   side is, and whether being a heavy pre-match favourite changes things. First
   answer: yes, it conditions on dominance (the fit is on rule_ok, worth ~+16pp).

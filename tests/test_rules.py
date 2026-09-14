@@ -266,3 +266,57 @@ def test_no_percentage_margin_is_applied():
     p = rules.win_probability("level", 75, 60)
     breakeven = 1.0 + (1.0 - p) / (p * (1.0 - config.COMMISSION))
     assert abs(rules.min_price("level", 75, 60) - breakeven) < 1e-9
+
+
+def test_the_evidence_bonus_survives_past_seventy_minutes():
+    # REGRESSION. The 2026-09-13 fit set the 70'+ bonus to zero on a single cell
+    # of n=30, so a side dominating 19-11 at 70' was charged the same price as
+    # one merely passing the rule. Measured across 45-85 the bonus is +10.9pp and
+    # flat in time (+10.7 to 65', +11.4 from 70'). Galatasaray 0-0 Kocaelispor
+    # was charged 2.66 at cp70 when the bar should have been the floor.
+    for minute in (45, 60, 70, 75, 80):
+        strong = rules.win_probability("level", minute, 75)
+        weak = rules.win_probability("level", minute, 65)
+        assert strong - weak > 0.05, "bonus vanished at %d'" % minute
+
+
+def test_a_heavy_pre_match_favourite_needs_a_shorter_price():
+    # pre-match price is worth MORE than the evidence: +13.2pp for pm<1.35
+    # against -7.0pp for pm>2.10, measured on 1,879 rule_ok rows
+    heavy = rules.win_probability("level", 65, 75, pm=1.20)
+    marginal = rules.win_probability("level", 65, 75, pm=2.60)
+    assert heavy > marginal
+    assert rules.min_price("level", 65, 75, pm=1.20) < \
+        rules.min_price("level", 65, 75, pm=2.60)
+
+
+def test_the_price_term_is_clamped_outside_the_measured_range():
+    # a log-linear fit extrapolated to -16.7pp at 3.00 where the measured bucket
+    # is -7.0pp, so the term is clamped at both ends rather than extended
+    assert rules._pm_adjustment(1.05) == rules._pm_adjustment(1.20)
+    assert rules._pm_adjustment(3.00) == rules._pm_adjustment(8.00)
+    assert rules._pm_adjustment(config.WINP_PM_POINTS[0]) == config.WINP_PM_ADJ[0]
+    assert rules._pm_adjustment(config.WINP_PM_POINTS[-1]) == config.WINP_PM_ADJ[-1]
+
+
+def test_the_price_term_is_monotone_in_the_pre_match_price():
+    adjs = [rules._pm_adjustment(p) for p in (1.10, 1.30, 1.50, 1.80, 2.20, 3.00)]
+    assert adjs == sorted(adjs, reverse=True)
+
+
+def test_a_missing_pre_match_price_reproduces_the_price_blind_model():
+    # callers outside the monitor (board.py, the backtest) may have no pm; they
+    # should get the old behaviour rather than a guess
+    assert rules._pm_adjustment(None) == 0.0
+    assert rules.win_probability("level", 65, 75, pm=None) == \
+        rules.win_probability("level", 65, 75)
+
+
+def test_the_probability_is_capped_where_calibration_stops_holding():
+    # above 75% the model over-predicts by ~10pp (n=34, actual 70.6%), because
+    # the evidence and pre-match-price terms partly double-count when both are
+    # strong. Capping there keeps the required price from being shortened on an
+    # estimate the data does not support.
+    hot = rules.win_probability("level", 45, 95, pm=1.10)
+    assert hot == config.WINP_MAX
+    assert rules.win_probability("behind", 45, 95, pm=1.10) == config.WINP_MAX

@@ -245,10 +245,10 @@ class Monitor:
                  back]
         need = ctx.get("need")
         winp = ctx.get("winp")
-        edge_line = ("MINIMUM PRICE FOR AN EDGE: %.2f   (%s, %d', P(win) %.0f%%, "
-                     "%.0f%% margin over break-even)"
-                     % (need, ctx.get("state", "?"), ctx["minute"], 100 * winp,
-                        config.EDGE_MARGIN * 100)) if need else ""
+        edge_line = ("MINIMUM PRICE FOR AN EDGE: %.2f   (%s, %d', pre-match %.2f, "
+                     "P(win) %.0f%%)"
+                     % (need, ctx.get("state", "?"), ctx["minute"],
+                        ctx.get("pm", 0.0), 100 * winp)) if need else ""
         if price is None:
             lines += ["Price: NOT AVAILABLE - check manually"]
             if edge_line:
@@ -681,7 +681,11 @@ class Monitor:
         # Only bites when a price is actually quoted - with none there is
         # nothing to test, and the alert still goes out unsized as before.
         state = "behind" if fav_goals < opp_goals else "level"
-        need = rules.min_price(state, minute, ev.conv)
+        # `pm` is the PRE-MATCH price and is worth more to the estimate than the
+        # evidence is; see config.WINP_PM_POINTS. It is always available here -
+        # the watchlist is selected on it - so the price-blind path is only ever
+        # taken by callers outside the monitor.
+        need = rules.min_price(state, minute, ev.conv, pm)
         edge_ok = True
         if config.MIN_ODDS_GATE and price is not None and ev.ok:
             edge_ok = price >= need
@@ -703,9 +707,10 @@ class Monitor:
                            % (price, config.PRICE_FLOOR, config.PRICE_CEIL))
             if not edge_ok:
                 why.append("price %.2f below %.2f needed for an edge "
-                           "(%s, %d', P(win) %.0f%%)"
-                           % (price, need, state, minute,
-                              100 * rules.win_probability(state, minute, ev.conv)))
+                           "(%s, %d', pm %.2f, P(win) %.0f%%)"
+                           % (price, need, state, minute, pm,
+                              100 * rules.win_probability(state, minute,
+                                                          ev.conv, pm)))
             print("       cp%d %s: %s"
                   % (cp, "no signal" if expired else "not yet (window open)",
                      "; ".join(why)), flush=True)
@@ -772,7 +777,8 @@ class Monitor:
                    conv=ev.conv, price=price, market=pinfo["market"],
                    kind=pinfo["kind"], derived=pinfo["derived"],
                    need=need, state=state,
-                   winp=rules.win_probability(state, minute, ev.conv))
+                   winp=rules.win_probability(state, minute, ev.conv, pm),
+                   pm=pm)
         self.last_alert[fid] = ctx
         self.best_conv[fid] = ev.conv
         mid = self.tg.send(self.alert_text(ctx, ev, sz, price, pm))

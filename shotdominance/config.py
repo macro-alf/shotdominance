@@ -142,38 +142,73 @@ STRONG_GATE = _i("STRONG_GATE", 1) != 0
 # Behind decays far more slowly because the double chance only needs a draw.
 MIN_ODDS_GATE = _i("MIN_ODDS_GATE", 1) != 0
 
-# REFITTED 2026-09-13 after Alf asked whether the probability actually knows how
-# dominant the favourite was. It does - the fit is on the rule_ok population, so
-# every row is a favourite that PASSED the dominance rule. That is worth about
-# +8pp on its own: level state at 70-77', dominating favourites win 36.6%
-# (n=257) against 28.2% for those that failed the rule (n=3,962).
+# REFITTED 2026-09-14 on a table rebuilt with checkpoints extended to 80 and 85
+# (34,734 rows, 2020-23, top-5 leagues, penalties stripped, no API calls - the
+# Understat/football-data cache). The 27,635 rows shared with the previous table
+# reproduce won / rule_ok / s_vol / s_mom / fav_price exactly; only conv moved,
+# because the old table still carried the pre-2026-09-13 time boost.
 #
-# The base curves are fitted on evidence<70 ONLY. Fitting them on everything and
-# then adding a bonus double-counts the strong cases, which is what the first
-# version did.
-WINP_LEVEL_BASE = _f("WINP_LEVEL_BASE", 0.593)      # evidence<70, minute 45
-WINP_LEVEL_SLOPE = _f("WINP_LEVEL_SLOPE", -0.00841)
-WINP_BEHIND_BASE = _f("WINP_BEHIND_BASE", 0.596)
-WINP_BEHIND_SLOPE = _f("WINP_BEHIND_SLOPE", -0.00646)
+# The fit is on the rule_ok population, so every row is a favourite that PASSED
+# the dominance rule - worth about +8pp on its own. Base curves are fitted on
+# evidence<70 ONLY; fitting on everything and then adding a bonus double-counts
+# the strong cases.
+#
+# The line holds to 80' and breaks at 85' (residual -6.9pp level, -9.2pp behind),
+# which is why there is no checkpoint past 75 and why 85 is not a candidate.
+#     residual, evidence<70:  45' -1.9 / -7.2   70' +2.8 / +0.1   85' -6.9 / -9.2
+WINP_LEVEL_BASE = _f("WINP_LEVEL_BASE", 0.6019)     # evidence<70, minute 45
+WINP_LEVEL_SLOPE = _f("WINP_LEVEL_SLOPE", -0.009466)
+WINP_BEHIND_BASE = _f("WINP_BEHIND_BASE", 0.6254)
+WINP_BEHIND_SLOPE = _f("WINP_BEHIND_SLOPE", -0.008902)
 
-# THE EVIDENCE BONUS IS NOT CONSTANT - it decays to nothing late in the match.
-# Measured (level, the only state with usable cell sizes):
-#     45-59'   >=70: 63.0% (n=81)   <70: 55.2% (n=504)   -> +7.8pp
-#     60-69'   >=70: 61.0% (n=41)   <70: 45.1% (n=273)   -> +15.9pp
-#     70-79'   >=70: 36.7% (n=30)   <70: 36.6% (n=227)   -> +0.1pp
-# By 70' a strong evidence score buys NOTHING: a side dominating 19-11 in a
-# goalless game is no likelier to score than one merely passing the rule. The
-# first version applied a flat +9pp at every minute, which made the gate too
-# LENIENT for high-conviction fixtures after 70' - the opposite of the error
-# first suspected.
-# Behind-state cells are 11-16 rows and cannot carry their own fit, so they use
-# the level bands. Flagged rather than invented.
+# THE EVIDENCE BONUS IS FLAT IN TIME. The previous version banded it and set the
+# 70'+ band to ZERO on a single cell of n=30. With minutes 80 and 85 measured the
+# bonus is positive at every checkpoint, and the "cliff" was one weak cell at 75':
+#     45' +7.2   55' +10.3   65' +18.6   75'  +2.7   85' +17.1
+#     50' +7.1   60' +12.1   70' +12.2   80' +15.6
+# Pooled it is +10.9pp, and splitting it early/late gives +10.7 / +11.4 - i.e. no
+# time structure worth modelling. Leave-one-season-out confirms banding buys
+# nothing: 0.6697 banded vs 0.6694 flat. Per-cell n is 20-37, so the flat pooled
+# figure is also the only one with enough behind it to trust.
+# Cost of the old zero: Galatasaray 0-0 Kocaelispor (2026-09-13) was charged 2.66
+# at cp70 when the correct bar was the floor.
 WINP_STRONG_FROM = _f("WINP_STRONG_FROM", 70.0)
-WINP_BONUS_EARLY = _f("WINP_BONUS_EARLY", 0.078)    # up to 60'
-WINP_BONUS_MID = _f("WINP_BONUS_MID", 0.159)        # 60-69'
-WINP_BONUS_LATE = _f("WINP_BONUS_LATE", 0.0)        # 70'+ : measured at zero
-WINP_MID_FROM = _f("WINP_MID_FROM", 60.0)
-WINP_LATE_FROM = _f("WINP_LATE_FROM", 70.0)
+WINP_STRONG_BONUS = _f("WINP_STRONG_BONUS", 0.109)
+
+# PRE-MATCH PRICE, added 2026-09-14. Alf asked whether a heavy pre-match
+# favourite differs from a marginal one at the same evidence. It does, by more
+# than the evidence itself does, and the model was blind to it. Residual after
+# state + minute + evidence:
+#     pm <1.35     +13.2pp (n=384)      pm 1.70-2.10   -5.3pp (n=408)
+#     pm 1.35-1.70  +0.6pp (n=626)      pm >2.10       -7.0pp (n=461)
+# The effect is stable in time (+14.2 early / +11.3 late for heavy favourites),
+# so it enters additively rather than as a cross - the cells are far too thin for
+# a price x minute x evidence interaction.
+#
+# Interpolated in ln(price) between the bucket centroids and CLAMPED outside
+# them. A straight log-linear fit was tried and rejected: it extrapolates to
+# -16.7pp at 3.00 where the measured bucket is -7.0pp, because the relationship
+# compresses at long prices.
+#
+# Leave-one-season-out, each form refitted on the training seasons only:
+#     flat bonus, no price  0.6694        flat bonus, + price  0.6609
+# Honest caveat: the gain comes from 2020 and 2023; 2021 and 2022 are marginally
+# worse. Directionally strong and mechanistically sensible, but not uniform.
+WINP_PM_POINTS = [1.236, 1.505, 1.866, 2.343]       # bucket centroids
+WINP_PM_ADJ = [0.132, 0.006, -0.053, -0.070]
+
+# The two additive terms PARTLY DOUBLE-COUNT where both are strong, because each
+# was measured pooled over the other. Calibration is excellent to 75% and breaks
+# above it:
+#     predicted 45-55%  n=492  actual 49.6%   gap +0.9
+#     predicted 55-65%  n=332  actual 60.5%   gap -1.0
+#     predicted 65-75%  n=147  actual 68.7%   gap +0.8
+#     predicted 75-100% n= 34  actual 70.6%   gap +9.6   <-- over-confident
+# Over-prediction shortens the required price, which is the dangerous direction,
+# so the estimate is capped where the calibration stops holding rather than at an
+# arbitrary 0.95. Only 34 of 1,879 rows reach the cap. Raise it only with data
+# above it, not because a fixture "looks certain".
+WINP_MAX = _f("WINP_MAX", 0.75)
 
 # Alf 2026-09-13: NO extra margin over break-even, but never back anything under
 # MIN_BACKABLE_ODDS. The percentage margin was doing two jobs badly - it was both
@@ -183,8 +218,11 @@ WINP_LATE_FROM = _f("WINP_LATE_FROM", 70.0)
 # WHEN there is value, the floor decides what is worth the trouble at all.
 #
 # The floor binds early and break-even binds late, which is the right way round:
-#     level, evidence<70   45'  break-even 1.71 -> floor 1.85 binds
+#     level, evidence<70   45'  break-even 1.71 -> floor 1.80 binds
 #                          75'  break-even 2.99 -> break-even binds
+# Alf 2026-09-14: 1.85 -> 1.80. With pre-match price in the model the floor binds
+# far more often for heavy favourites - a pm 1.22 side at conviction 75 sits on
+# the floor at every checkpoint to 75'. Galatasaray missed cp70 by two cents.
 #
 # Note EDGE_MARGIN 0 means the gate now accepts a ZERO-edge bet wherever
 # break-even exceeds the floor, on the model's word alone. The floor is the only
@@ -192,7 +230,7 @@ WINP_LATE_FROM = _f("WINP_LATE_FROM", 70.0)
 # that proves too permissive, raise MIN_BACKABLE_ODDS rather than reinstating a
 # percentage margin, so the two jobs stay separate.
 EDGE_MARGIN = _f("EDGE_MARGIN", 0.0)
-MIN_BACKABLE_ODDS = _f("MIN_BACKABLE_ODDS", 1.85)
+MIN_BACKABLE_ODDS = _f("MIN_BACKABLE_ODDS", 1.80)
 
 # --- adaptive polling -------------------------------------------------------
 # Alf 2026-09-13: pace the dull fixtures much more slowly instead of spending
