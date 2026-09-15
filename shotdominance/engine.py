@@ -9,7 +9,7 @@ printed (pm=...) so the effect of the 1.30-2.25 gate is measurable.
 """
 import time
 
-from . import apifootball, blotter, config, rules, sizing, state
+from . import apifootball, blotter, config, ledger, rules, sizing, state
 
 
 class Monitor:
@@ -39,6 +39,7 @@ class Monitor:
         self.msg2fid = {}        # telegram message_id -> fid
         self.awaiting = {}       # chat_id -> fid (waiting for stake & price)
         self.bets = []           # blotter rows
+        self.blocks = []         # blocked-signal ledger rows
         self.last_alert = {}     # fid -> context dict for record_bet
         self.offset = 0          # telegram getUpdates cursor
         self.xg_seen = False
@@ -173,6 +174,30 @@ class Monitor:
         print("   >>> QUOTE %s @ %.2f -> stake %.0f (conv %.0f)"
               % (ctx["label"], price, sz["stake"], ctx["conv"]), flush=True)
 
+    # --- blocked-signal ledger ----------------------------------------------
+    def _record_block(self, fid, cp, ctx, blocked_by):
+        """Record a checkpoint the gates refused, for later settlement.
+
+        Only called where the EVIDENCE rule passed - a signal that failed on
+        shots was never a candidate and would swamp the table. Keyed on
+        (day, fixture, checkpoint) by the ledger, so the repeated evaluations
+        inside an open grace window update one row rather than appending dozens.
+        """
+        if not config.BLOCKED_LEDGER:
+            return
+        row = ledger.new_block(fid, cp, ctx, blocked_by)
+        key = ledger._key(row)
+        for i, existing in enumerate(self.blocks):
+            if ledger._key(existing) == key:
+                row["status"] = existing.get("status", "open")
+                row["final_score"] = existing.get("final_score", "")
+                row["pnl_at_quote"] = existing.get("pnl_at_quote", "")
+                self.blocks[i] = row
+                break
+        else:
+            self.blocks.append(row)
+        ledger.write(config.BLOCKED_LEDGER_PATH, self.blocks)
+
     # --- blotter ------------------------------------------------------------
     def record_bet(self, fid, stake, price):
         ctx = self.last_alert.get(fid) or {}
@@ -186,12 +211,26 @@ class Monitor:
               % (bet["match"], stake, price), flush=True)
 
     def settle(self, live_ids):
-        """Close out bets whose fixture has left the live board and finished."""
-        changed = False
+        """Close out bets, and grade the blocked-signal ledger, once their
+        fixture has left the live board and finished.
+
+        Both tables settle from the SAME fixture fetch: a fixture that produced
+        a bet usually produced several blocked checkpoints first, and paying for
+        that lookup twice would be waste. Open rows in either table contribute
+        their fixture id once.
+        """
+        pending = {}
         for b in self.bets:
-            if b["status"] != "open" or str(b["fixture_id"]) in live_ids:
-                continue
-            rows = self.api.get("/fixtures", id=b["fixture_id"])
+            if b["status"] == "open" and str(b["fixture_id"]) not in live_ids:
+                pending.setdefault(str(b["fixture_id"]), None)
+        for r in self.blocks:
+            if r.get("status") == "open" and str(r["fixture_id"]) not in live_ids:
+                pending.setdefault(str(r["fixture_id"]), None)
+        if not pending:
+            return
+
+        for fid in list(pending):
+            rows = self.api.get("/fixtures", id=fid)
             if not rows:
                 continue
             fx = rows[0]
@@ -199,8 +238,15 @@ class Monitor:
             if st not in ("FT", "AET", "PEN"):
                 continue
             g, t = fx.get("goals") or {}, fx.get("teams") or {}
-            hs, as_ = int(g.get("home") or 0), int(g.get("away") or 0)
-            home = (t.get("home") or {}).get("name")
+            pending[fid] = (int(g.get("home") or 0), int(g.get("away") or 0),
+                            (t.get("home") or {}).get("name"))
+
+        changed = False
+        for b in self.bets:
+            got = pending.get(str(b["fixture_id"]))
+            if b["status"] != "open" or not got:
+                continue
+            hs, as_, home = got
             blotter.settle_bet(b, home, hs, as_)
             changed = True
             tot = sum(float(x["pnl"]) for x in self.bets
@@ -213,6 +259,21 @@ class Monitor:
                   % (b["match"], b["status"], b["pnl"]), flush=True)
         if changed:
             blotter.write(config.BLOTTER_PATH, self.bets)
+
+        graded = False
+        for r in self.blocks:
+            got = pending.get(str(r["fixture_id"]))
+            if r.get("status") != "open" or not got:
+                continue
+            hs, as_, home = got
+            ledger.settle_block(r, home, hs, as_)
+            graded = True
+            print("   ledger: cp%s %s -> %s (refused at %s, needed %s)"
+                  % (r["checkpoint"], r["match"], r["status"],
+                     r["live_price"] or "n/a", r["need"]), flush=True)
+        if graded:
+            ledger.write(config.BLOCKED_LEDGER_PATH, self.blocks)
+        if changed or graded:
             self.save()
 
     # --- output helpers -----------------------------------------------------
@@ -728,6 +789,19 @@ class Monitor:
             print("       cp%d %s: %s"
                   % (cp, "no signal" if expired else "not yet (window open)",
                      "; ".join(why)), flush=True)
+            if ev.ok:
+                # the evidence was there; something else refused it. Worth
+                # recording - this is the population the gate is judged on.
+                bad = "+".join([t for t, k in (("band", price_ok),
+                                               ("price", edge_ok)) if not k])
+                self._record_block(fid, cp, dict(
+                    league=lg.get("name"), label=label, minute=minute,
+                    state=state, side=side, market=pinfo["market"],
+                    fav=fav_name, score="%d-%d" % (hs, as_), conv=ev.conv,
+                    vol_met=ev.vol_met, mom_met=ev.mom_met, n_present=nd,
+                    pm=pm, price=price, need=need,
+                    winp=rules.win_probability(state, minute, ev.conv, pm)),
+                    bad or "other")
             return
 
         # conviction gate: must clear the floor to fire at all, and only re-fire
@@ -735,6 +809,13 @@ class Monitor:
         fire, reason = self._fire_decision(fid, ev.conv)
         if not fire:
             print("       cp%d %s" % (cp, reason), flush=True)
+            self._record_block(fid, cp, dict(
+                league=lg.get("name"), label=label, minute=minute, state=state,
+                side=side, market=pinfo["market"], fav=fav_name,
+                score="%d-%d" % (hs, as_), conv=ev.conv, vol_met=ev.vol_met,
+                mom_met=ev.mom_met, n_present=nd, pm=pm, price=price, need=need,
+                winp=rules.win_probability(state, minute, ev.conv, pm)),
+                "conviction")
             return
 
         # ONE ALERT PER CHECKPOINT. Checkpoints are 5 minutes apart, so this is

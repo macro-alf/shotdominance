@@ -76,7 +76,8 @@ def main():
         dig = os.path.join("logs", "digest-%s.txt" % day)
         keep = [("COVERAGE", 12), ("1. CLOSEST", 12), ("2. WHY METRICS", 14),
                 ("3. DATA QUALITY", 14), ("4. GATE CENSUS", 14),
-                ("5. CONVICTION", 6), ("6. BLOTTER", 12)]
+                ("5. CONVICTION", 6), ("6. BLOTTER", 12),
+                ("7. BLOCKED-SIGNAL LEDGER", 16)]
         lines, out, cur, n = text.split("3. CUMULATIVE")[0].splitlines(), [], None, 0
         out.append("DIGEST %s  (paste this into the chat)" % day)
         out.append(SUB)

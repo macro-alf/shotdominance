@@ -544,6 +544,17 @@ QUOTA_POLL_MAX = _i("QUOTA_POLL_MAX", 300)        # slowest we will go
 
 # --- files ------------------------------------------------------------------
 BLOTTER_PATH = os.getenv("BLOTTER", "blotter.csv")
+
+# THE BLOCKED-SIGNAL LEDGER, added 2026-09-14. Since the minimum-price gate went
+# live it, not conviction, has been the binding constraint - 45 refusals on its
+# first afternoon against 2 alerts - and nothing recorded them, so its value
+# rested on anecdote. This records every checkpoint where the EVIDENCE rule
+# passed but a gate refused, and grades it once the fixture finishes.
+# The question it answers is not "did blocked bets win" but "did they win more
+# often than the refused price implied": sum pnl_at_quote over settled rows and
+# a reliably negative number means the gate is paying for itself.
+BLOCKED_LEDGER = _i("BLOCKED_LEDGER", 1) != 0
+BLOCKED_LEDGER_PATH = os.getenv("BLOCKED_LEDGER_PATH", "blocked.csv")
 STATE_PATH = os.getenv("STATE3", "state3.json")
 
 # --- market filtering (empirical) -------------------------------------------

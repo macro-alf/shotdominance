@@ -6,7 +6,9 @@ poll, and the tests drive real `Monitor.poll()` calls. Without this fixture a
 `pytest` run in the repo root rewrites the live `state3.json` the running
 monitor depends on - a restart afterwards would come up with acknowledgements
 and the Telegram offset wiped, re-processing old replies. The blotter is
-redirected on the same principle: it is the only record of real bets.
+redirected on the same principle: it is the only record of real bets, and so is
+the blocked-signal ledger - caught 2026-09-15 when a suite run deposited a
+fake refusal ("H 1-1 A", fixture 7) into the repo's blocked.csv.
 
 Both are read as attributes at call time, so monkeypatching the module works.
 """
@@ -19,3 +21,5 @@ from shotdominance import config
 def isolate_live_files(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "STATE_PATH", str(tmp_path / "state3.json"))
     monkeypatch.setattr(config, "BLOTTER_PATH", str(tmp_path / "blotter.csv"))
+    monkeypatch.setattr(config, "BLOCKED_LEDGER_PATH",
+                        str(tmp_path / "blocked.csv"))

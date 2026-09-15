@@ -191,6 +191,41 @@ for context. Last updated 2026-08-29.
   observations behind the late bonus. Only then decide what cp80's bar should
   be, and only then whether cp80 is worth adding at all.
 
+- [x] **THE BLOCKED-SIGNAL LEDGER - DONE 2026-09-15.** Asked for by Alf. Since
+  the minimum-price gate went live on 2026-09-13 it, not conviction, has been the
+  binding constraint - 45 refusals on its first afternoon against 2 alerts - and
+  nothing recorded them. Its value rested entirely on anecdote.
+
+  `blocked.csv` now records every checkpoint where the EVIDENCE RULE PASSED but a
+  gate refused, with the quoted price, the demanded price, P(win), conviction,
+  pre-match price and which constraint was binding. It settles from the same
+  fixture fetch as the blotter (no extra quota) and grades the refusal exactly as
+  a real bet would be graded - outright for 'win', win-or-draw for a double
+  chance - so the two tables are comparable.
+
+  **The question it answers is NOT "did blocked bets win."** It is "did they win
+  MORE OFTEN than the price we refused implied". A block at 1.83 winning 50% was
+  a good block; break-even there is ~55%. `pnl_at_quote` is per unit stake, so
+  summing it gives the P&L of the strategy of ignoring the gate - reliably
+  negative means the gate is earning its keep, reliably positive means it is
+  refusing value. Surfaced as section 7 of the end-of-day report and digest.
+
+  **Do not read it before ~200 settled rows.** The instrument is built; the
+  measurement is not made. The temptation after a night like 2026-09-13 - where
+  Galatasaray was refused six times and won - will be to act on ten rows.
+
+- [x] **ADAPTIVE POLLING IS A RESCUE, NOT THE DEFAULT - DONE 2026-09-14/15.**
+  Alf: "should be used only when quota has reached 65% for the day and we are at
+  risk... not for everything from the start". Gated on `SLOW_POLL_FROM_QUOTA`
+  (0.65). Verified: full polling at 0/30/50/64% quota, tiering from 65%, and the
+  checkpoint window still never skipped even at 95%. The trigger reads the API's
+  own used/limit via `_quota_guard`, not the launch-time budget estimate.
+  What it cost before the fix: Inter 0-2 down to Udinese, a 1.18 pre-match
+  favourite, got three statistics calls in twenty-one minutes on 15% quota, and
+  its logged reading sat six minutes stale showing zero shots while the feed had
+  2 shots and 0.46 xG. Removing the throttle cost nothing - that evening still
+  finished at 2,353 of 7,500.
+
 - [ ] **MON 14 SEP: QUOTA SAVING - TWO OF THE THREE OPTIONS ARE DEAD (2026-09-14).**
   - **(c) widen the skip to the odds call: IMPOSSIBLE.** Odds are a single bulk
     `apifootball.live_prices` call per cycle (`engine.py:472`), outside the

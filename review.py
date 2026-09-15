@@ -355,6 +355,64 @@ def blotter(path="blotter.csv"):
             print("\n  Fewer than ~200 settled bets and these buckets are noise.")
 
 
+def ledger(path="blocked.csv"):
+    """What the gates REFUSED, and whether refusing was right.
+
+    The headline number is the counterfactual P&L per unit stake of ignoring the
+    price gate. Reliably negative means the gate is paying for itself; reliably
+    positive means it is too strict and is refusing value. Neither reading means
+    anything until there are a few hundred settled rows.
+    """
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    if not rows:
+        return
+    section("7. BLOCKED-SIGNAL LEDGER")
+    done = [r for r in rows if r.get("status") in ("won", "lost")]
+    print("  checkpoints refused %d  (open %d, settled %d)"
+          % (len(rows), len(rows) - len(done), len(done)))
+    by = collections.Counter(r.get("blocked_by", "?") for r in rows)
+    print("  by binding constraint: %s"
+          % ", ".join("%s %d" % kv for kv in sorted(by.items(), key=lambda x: -x[1])))
+    if not done:
+        print("\n  nothing settled yet - the table cannot say anything.")
+        return
+    priced = [r for r in done if (r.get("pnl_at_quote") or "") != ""]
+    wins = sum(1 for r in done if r["status"] == "won")
+    print("  refused checkpoints that WOULD have won: %d of %d (%.0f%%)"
+          % (wins, len(done), 100.0 * wins / len(done)))
+    if priced:
+        pnl = sum(float(r["pnl_at_quote"]) for r in priced)
+        print("\n  counterfactual P&L of IGNORING the gate, per unit stake:")
+        print("      %+.2f over %d priced refusals  (%+.1f%% per unit staked)"
+              % (pnl, len(priced), 100.0 * pnl / len(priced)))
+        print("      negative => the gate is earning its keep")
+        print("      positive => it is refusing value")
+    blind = [r for r in done if (r.get("pnl_at_quote") or "") == ""]
+    if blind:
+        bw = sum(1 for r in blind if r["status"] == "won")
+        print("\n  %d settled refusals had NO quote (the half-time blind spot);"
+              " %d of them won. No P&L: there was no price to take." % (len(blind), bw))
+    pb = collections.defaultdict(list)
+    for r in priced:
+        try:
+            pb[min(int(float(r["live_price"]) / 0.5) * 0.5, 3.0)].append(r)
+        except (TypeError, ValueError):
+            pass
+    if pb:
+        print("\n  by the price that was refused:")
+        print("  %10s %7s %7s %10s" % ("price", "n", "win%", "pnl/unit"))
+        for b in sorted(pb):
+            g = pb[b]
+            w = sum(1 for r in g if r["status"] == "won")
+            pl = sum(float(r["pnl_at_quote"]) for r in g)
+            print("  %6.2f-%.2f %6d %6.0f%% %9.2f"
+                  % (b, b + 0.49, len(g), 100.0 * w / len(g), pl / len(g)))
+    print("\n  Fewer than ~200 settled refusals and this is noise.")
+
+
 def main():
     a = sys.argv[1:]
     d = a[a.index("--dir") + 1] if "--dir" in a else "logs"
@@ -369,6 +427,7 @@ def main():
         sys.exit("parsed 0 match-lines - is this a monitor log?")
     report(rows, nosig, signals, bets, polls, events, top)
     blotter(a[a.index("--blotter") + 1] if "--blotter" in a else "blotter.csv")
+    ledger(a[a.index("--ledger") + 1] if "--ledger" in a else "blocked.csv")
     cols = list(rows[0].keys())
     with open("review_rows.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=cols); w.writeheader(); w.writerows(rows)

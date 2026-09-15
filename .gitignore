@@ -1,6 +1,7 @@
 # runtime artefacts
 logs/
 blotter.csv
+blocked.csv
 state3.json
 review_rows.csv
 
