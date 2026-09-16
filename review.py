@@ -363,13 +363,23 @@ def ledger(path="blocked.csv"):
     positive means it is too strict and is refusing value. Neither reading means
     anything until there are a few hundred settled rows.
     """
-    if not os.path.exists(path):
-        return
-    with open(path, encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    if not rows:
-        return
+    rows = []
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
     section("7. BLOCKED-SIGNAL LEDGER")
+    if not rows:
+        # SAY SO OUT LOUD. An instrument that prints nothing on a quiet night is
+        # indistinguishable from one that was never wired in, and this repo has
+        # been caught by that twice (three red tests unnoticed for a fortnight;
+        # a board reporting the previous day as live). 2026-09-15 was the
+        # ledger's first night and it produced no section at all.
+        print("  no refused checkpoints recorded (%s)" % path)
+        print("  The ledger only records a checkpoint where the EVIDENCE RULE")
+        print("  PASSED and a gate then refused it. An empty table means no")
+        print("  fixture passed the rule at a checkpoint - NOT that the price")
+        print("  gate was idle. Check section 4 for what the rule rejected.")
+        return
     done = [r for r in rows if r.get("status") in ("won", "lost")]
     print("  checkpoints refused %d  (open %d, settled %d)"
           % (len(rows), len(rows) - len(done), len(done)))
