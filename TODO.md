@@ -117,6 +117,30 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [x] **EDGE TOLERANCE 0.20 - SHIPPED 2026-09-19, LANDS AT TOMORROW'S LAUNCH.**
+  Alf: "if the odds live you see are 0.2 or less away from the minimum required
+  odds, still fire the signal and report the minimum odds in Telegram. If no live
+  odds, fire the signal anyway. Assuming of course the evidence based conviction
+  score is 60 or higher."
+  - `EDGE_TOLERANCE = 0.20`, absolute decimal odds, not a percentage.
+  - The alert now carries an explicit warning when the quote is short of the bar,
+    naming the shortfall and the required price.
+  - Firing unsized with no quote is CONFIRMED INTENDED, not a defect. Stop
+    raising it; the related "missing price is more permissive than a bad one"
+    entry is now a sizing question only.
+  - Conviction floor unchanged at 60.
+
+  **CONSEQUENCE ALF SHOULD SEE: the effective floor is now 1.60, not 1.80.**
+  `need` is max(break-even, MIN_BACKABLE_ODDS), so the tolerance subtracts from
+  the floor too. If 1.80 was meant as a hard minimum, raise MIN_BACKABLE_ODDS to
+  2.00. Pinned by `test_the_tolerance_lowers_the_effective_floor`.
+
+  **What it would have changed over the five days to 2026-09-19:** of 21 settled
+  price refusals, 6 were within 0.20 and would now fire, from 4 fixtures - 2 of
+  which won (ADO Den Haag and Werder Bremen, both late equalisers). The other 2
+  lost. So on the only evidence available it is roughly break-even on fixtures
+  and adds two bets per five days.
+
 - [x] **MON 14 SEP: ADD A CHECKPOINT AT 80 - MEASURED, DECIDED AGAINST 2026-09-14.**
   The blocker below is RESOLVED: the feature table was rebuilt with checkpoints at
   80 and 85 (34,734 rows, from the local cache, no API calls), so 80' is measured

@@ -327,6 +327,13 @@ class Monitor:
                       % (price, price_tag, pm)]
             if edge_line:
                 lines += ["  " + edge_line]
+            sb = ctx.get("short_by") or 0.0
+            if sb > 0:
+                lines += ["  ** THIS PRICE IS %.2f SHORT OF THE MINIMUM (%.2f "
+                          "available, %.2f required). Fired inside the %.2f "
+                          "tolerance - there is NO modelled edge at this price. "
+                          "Beat %.2f on the exchange or skip it. **"
+                          % (sb, price, need, config.EDGE_TOLERANCE, need)]
             if band:
                 lines += [band]
             lines += ["",
@@ -754,7 +761,11 @@ class Monitor:
         # suppressing the SCORE late in a match, demand a longer PRICE, because
         # fewer minutes left means a lower chance of the goal the bet needs.
         # Only bites when a price is actually quoted - with none there is
-        # nothing to test, and the alert still goes out unsized as before.
+        # nothing to test, and the alert still goes out unsized (Alf confirmed
+        # 2026-09-19 that firing blind is intended, not a defect to be fixed).
+        # A quote within EDGE_TOLERANCE of the requirement now FIRES rather than
+        # being refused; the alert reports the requirement so the shortfall is
+        # explicit. See config.EDGE_TOLERANCE.
         state = "behind" if fav_goals < opp_goals else "level"
         # `pm` is the PRE-MATCH price and is worth more to the estimate than the
         # evidence is; see config.WINP_PM_POINTS. It is always available here -
@@ -762,8 +773,11 @@ class Monitor:
         # taken by callers outside the monitor.
         need = rules.min_price(state, minute, ev.conv, pm)
         edge_ok = True
+        short_by = 0.0
         if config.MIN_ODDS_GATE and price is not None and ev.ok:
-            edge_ok = price >= need
+            edge_ok = price >= need - config.EDGE_TOLERANCE
+            if edge_ok and price < need:
+                short_by = need - price
 
         if fid in self.acked or fid in self.muted:
             print("       cp%d: signal suppressed - %s" %
@@ -871,7 +885,7 @@ class Monitor:
                    fav=fav_name, side=side, score="%d-%d" % (hs, as_),
                    conv=ev.conv, price=price, market=pinfo["market"],
                    kind=pinfo["kind"], derived=pinfo["derived"],
-                   need=need, state=state,
+                   need=need, state=state, short_by=short_by,
                    winp=rules.win_probability(state, minute, ev.conv, pm),
                    pm=pm)
         self.last_alert[fid] = ctx

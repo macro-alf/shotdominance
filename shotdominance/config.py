@@ -232,6 +232,21 @@ WINP_MAX = _f("WINP_MAX", 0.75)
 EDGE_MARGIN = _f("EDGE_MARGIN", 0.0)
 MIN_BACKABLE_ODDS = _f("MIN_BACKABLE_ODDS", 1.80)
 
+# Alf 2026-09-19: fire when the quote comes within EDGE_TOLERANCE of the required
+# price instead of refusing it, and put the requirement in the Telegram alert so
+# the shortfall is visible. Absolute, in decimal odds, not a percentage - the
+# whole point of the flat floor was that percentages scale wrongly.
+#
+# THIS LOWERS THE EFFECTIVE FLOOR. `need` is max(break-even, MIN_BACKABLE_ODDS),
+# so a tolerance of 0.20 means the shortest backable price is really 1.60, not
+# the 1.80 set on 2026-09-14. Raise MIN_BACKABLE_ODDS to 2.00 if 1.80 was meant
+# as a hard minimum rather than a target.
+#
+# Measured against the five days to 2026-09-19: of the 21 settled price refusals,
+# 6 were within 0.20 of the bar and would now fire. Those 6 came from 4 fixtures,
+# 2 of which won (ADO Den Haag and Werder Bremen, both equalising late).
+EDGE_TOLERANCE = _f("EDGE_TOLERANCE", 0.20)
+
 # --- adaptive polling -------------------------------------------------------
 # Alf 2026-09-13: pace the dull fixtures much more slowly instead of spending
 # the same quota on all of them. A goalless favourite realising nothing at

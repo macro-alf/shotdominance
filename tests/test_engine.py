@@ -4,7 +4,7 @@ carry-forward.
 import contextlib
 import io
 
-from shotdominance import config, engine
+from shotdominance import config, engine, rules, sizing
 
 
 class StubTg:
@@ -544,3 +544,62 @@ def test_a_checkpoint_window_is_never_skipped_even_when_armed():
     mon.last_conv["dull"] = 1.0
     mon.polls = 3                                # not a multiple of LOW_EVERY
     assert mon._due_for_poll("dull", config.CHECKPOINTS[0]) is True
+
+
+def _edge_monitor():
+    mon = engine.Monitor(None, None, set())
+    return mon
+
+
+def test_a_quote_within_tolerance_of_the_requirement_now_fires():
+    # Alf 2026-09-19: fire when the price comes within EDGE_TOLERANCE of the
+    # bar instead of refusing, and say so in the alert.
+    need = 2.50
+    tol = config.EDGE_TOLERANCE
+    assert (need - tol + 0.01) >= need - tol      # just inside -> fires
+    assert not (need - tol - 0.01) >= need - tol  # just outside -> refused
+
+
+def test_the_tolerance_lowers_the_effective_floor():
+    # `need` is max(break-even, MIN_BACKABLE_ODDS), so the tolerance applies to
+    # the floor too: the shortest backable price is really 1.80 - 0.20 = 1.60.
+    # Pinned so the consequence cannot be forgotten - raise MIN_BACKABLE_ODDS if
+    # 1.80 was meant as a hard minimum.
+    floor = config.MIN_BACKABLE_ODDS
+    assert round(floor - config.EDGE_TOLERANCE, 2) == 1.60
+
+
+def test_a_sub_requirement_alert_says_the_price_is_short():
+    mon = _edge_monitor()
+    ctx = dict(label="A 0-0 B", league="L", minute=60, fav="A", side="home",
+               score="0-0", conv=72.0, price=2.35, market="win", kind="k",
+               derived=False, need=2.50, state="level", winp=0.44, pm=1.60,
+               short_by=0.15)
+
+    ev = rules.Evaluation(
+        ok=True, basis="0 goals: volume AND momentum", approx=False, win_min=30,
+        cum_dom=3, opp_leads=0, conv=72.0, vol_met=3, mom_met=3, n_present=4,
+        vol_det=["shots 18/12"], mom_det=["shots +9"], extra=[], s_vol=80.0,
+        s_mom=75.0, s_dom=60.0, s_time=40.0, time_mult=1.0, vol_th={}, mom_th={})
+    sz = sizing.size(2.50, 72.0)
+    txt = mon.alert_text(ctx, ev, sz, 2.35, 1.60)
+    assert "SHORT OF THE MINIMUM" in txt
+    assert "2.50" in txt and "2.35" in txt
+    assert "NO modelled edge" in txt
+
+
+def test_a_price_at_or_above_the_requirement_carries_no_short_warning():
+    mon = _edge_monitor()
+    ctx = dict(label="A 0-0 B", league="L", minute=60, fav="A", side="home",
+               score="0-0", conv=72.0, price=2.80, market="win", kind="k",
+               derived=False, need=2.50, state="level", winp=0.44, pm=1.60,
+               short_by=0.0)
+
+    ev = rules.Evaluation(
+        ok=True, basis="0 goals: volume AND momentum", approx=False, win_min=30,
+        cum_dom=3, opp_leads=0, conv=72.0, vol_met=3, mom_met=3, n_present=4,
+        vol_det=["shots 18/12"], mom_det=["shots +9"], extra=[], s_vol=80.0,
+        s_mom=75.0, s_dom=60.0, s_time=40.0, time_mult=1.0, vol_th={}, mom_th={})
+    sz = sizing.size(2.50, 72.0)
+    txt = mon.alert_text(ctx, ev, sz, 2.80, 1.60)
+    assert "SHORT OF THE MINIMUM" not in txt
