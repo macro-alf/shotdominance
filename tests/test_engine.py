@@ -364,6 +364,17 @@ def test_checkpoint_closes_once_its_grace_expires():
     assert config.CHECKPOINTS[0] in mon.done["7"]
 
 
+def test_a_superseded_checkpoint_cannot_be_held_open():
+    """Why the 2026-09-20 "hold a blind checkpoint open" idea was abandoned:
+    due_checkpoint() retires every reached-but-lower checkpoint, so once the
+    clock passes the next one the earlier one is judged no matter what the
+    caller decides. With checkpoints 5 apart and grace 4 there is at most one
+    minute of room, so holding a checkpoint open buys nothing."""
+    done = set()
+    assert rules.due_checkpoint(done, config.CHECKPOINTS[1]) == config.CHECKPOINTS[1]
+    assert config.CHECKPOINTS[0] in done
+
+
 # --- penalties --------------------------------------------------------------
 class _PenApi:
     """Returns one MISSED penalty for team 10 at 45+1, like Genoa v Frosinone."""

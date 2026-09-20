@@ -406,8 +406,23 @@ def evaluate(history, fid, minute, fav, opp, fav_goals, opp_goals=None):
         ok = False
         basis += " [BLOCKED: no momentum window >= %dmin]" % config.MIN_WINDOW
 
-    base_conv = (0.55 * score(vol_r) + 0.30 * score(mom_r)
-                 + 0.15 * dom_score(vol_d))
+    # CONVICTION = 0.40 volume + 0.60 momentum. Alf 2026-09-20, measured on
+    # 1,879 rule_ok backtest rows. The old 0.55/0.30/0.15 weighted the least
+    # predictive component highest and included one that was near-noise:
+    #     top vs bottom quintile win-rate spread
+    #         volume     +4.3pp        momentum  +11.5pp        dominance +2.1pp
+    # Separating winners by the blended score, averaged over HELD-OUT seasons:
+    #     0.55/0.30/0.15  +7.0pp   (old)      0.50/0.50/0.00  +12.8pp
+    #     0.40/0.60/0.00 +12.0pp   (this)     0.30/0.70/0.00  +13.1pp
+    # Everything in the 0.3-0.5 volume range scores 12-13pp, so the finding is
+    # "shift weight to momentum, drop dominance", not a precise ratio - 0.40/0.60
+    # was chosen over the nominal best to avoid fitting a weight to 0.3pp.
+    # Volume keeps a real share because it is what the bet costs in goals; a
+    # momentum-only score fires on a ten-minute flurry in a quiet match.
+    # DOMINANCE GOES TO ZERO because it is already enforced twice - assess()
+    # only counts a metric that is dominated, and the standalone dominance gate
+    # blocks on top of that. It was being counted three times for +2.1pp.
+    base_conv = 0.40 * score(vol_r) + 0.60 * score(mom_r)
     tmult = time_factor(minute)
     conv = max(0.0, min(100.0, base_conv * tmult))
     return Evaluation(

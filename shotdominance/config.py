@@ -95,6 +95,7 @@ CHECKPOINTS = [45, 50, 55, 60, 65, 70, 75]
 # once: _fire_decision already requires each alert to beat the fixture's
 # conviction high.
 CHECKPOINT_GRACE = _i("CHECKPOINT_GRACE", 4)
+
 WINDOW = _i("WINDOW", 30)                # trailing momentum window, minutes
 # Shortest window we will still call momentum. Feeds in Tier 2 competitions
 # publish statistics late - Dundalk v Galway (2026-08-21) reported nothing until
@@ -160,10 +161,10 @@ MIN_ODDS_GATE = _i("MIN_ODDS_GATE", 1) != 0
 # The line holds to 80' and breaks at 85' (residual -6.9pp level, -9.2pp behind),
 # which is why there is no checkpoint past 75 and why 85 is not a candidate.
 #     residual, evidence<70:  45' -1.9 / -7.2   70' +2.8 / +0.1   85' -6.9 / -9.2
-WINP_LEVEL_BASE = _f("WINP_LEVEL_BASE", 0.6019)     # evidence<70, minute 45
-WINP_LEVEL_SLOPE = _f("WINP_LEVEL_SLOPE", -0.009466)
-WINP_BEHIND_BASE = _f("WINP_BEHIND_BASE", 0.6254)
-WINP_BEHIND_SLOPE = _f("WINP_BEHIND_SLOPE", -0.008902)
+WINP_LEVEL_BASE = _f("WINP_LEVEL_BASE", 0.6101)     # evidence<70, minute 45
+WINP_LEVEL_SLOPE = _f("WINP_LEVEL_SLOPE", -0.009906)
+WINP_BEHIND_BASE = _f("WINP_BEHIND_BASE", 0.5978)
+WINP_BEHIND_SLOPE = _f("WINP_BEHIND_SLOPE", -0.008342)
 
 # THE EVIDENCE BONUS IS FLAT IN TIME. The previous version banded it and set the
 # 70'+ band to ZERO on a single cell of n=30. With minutes 80 and 85 measured the
@@ -177,7 +178,7 @@ WINP_BEHIND_SLOPE = _f("WINP_BEHIND_SLOPE", -0.008902)
 # Cost of the old zero: Galatasaray 0-0 Kocaelispor (2026-09-13) was charged 2.66
 # at cp70 when the correct bar was the floor.
 WINP_STRONG_FROM = _f("WINP_STRONG_FROM", 70.0)
-WINP_STRONG_BONUS = _f("WINP_STRONG_BONUS", 0.109)
+WINP_STRONG_BONUS = _f("WINP_STRONG_BONUS", 0.074)
 
 # PRE-MATCH PRICE, added 2026-09-14. Alf asked whether a heavy pre-match
 # favourite differs from a marginal one at the same evidence. It does, by more
@@ -199,7 +200,7 @@ WINP_STRONG_BONUS = _f("WINP_STRONG_BONUS", 0.109)
 # Honest caveat: the gain comes from 2020 and 2023; 2021 and 2022 are marginally
 # worse. Directionally strong and mechanistically sensible, but not uniform.
 WINP_PM_POINTS = [1.236, 1.505, 1.866, 2.343]       # bucket centroids
-WINP_PM_ADJ = [0.132, 0.006, -0.053, -0.070]
+WINP_PM_ADJ = [0.139, 0.010, -0.058, -0.068]
 
 # The two additive terms PARTLY DOUBLE-COUNT where both are strong, because each
 # was measured pooled over the other. Calibration is excellent to 75% and breaks

@@ -197,7 +197,7 @@ def test_conviction_scales_by_time_factor():
     fav = {"xg": 1.6, "shots": 18, "sot": 6, "box": 9}
     opp = {"xg": 0.2, "shots": 2, "sot": 0, "box": 1}
     ev = rules.evaluate({}, "t", 50, fav, opp, fav_goals=0)
-    base = 0.55 * ev.s_vol + 0.30 * ev.s_mom + 0.15 * ev.s_dom
+    base = 0.40 * ev.s_vol + 0.60 * ev.s_mom   # dominance dropped 2026-09-20
     # time factor is off by default, so conviction IS the evidence blend
     assert ev.time_mult == 1.0
     assert abs(ev.conv - min(100.0, base)) < 0.2
