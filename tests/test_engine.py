@@ -603,3 +603,49 @@ def test_a_price_at_or_above_the_requirement_carries_no_short_warning():
     sz = sizing.size(2.50, 72.0)
     txt = mon.alert_text(ctx, ev, sz, 2.80, 1.60)
     assert "SHORT OF THE MINIMUM" not in txt
+
+
+def _quote_monitor():
+    mon = engine.Monitor(None, None, set())
+    mon._now = 1000.0
+    return mon
+
+
+def test_the_sunderland_misquote_is_rejected():
+    # 2026-09-19: 2.20 -> feed gap -> 1.14, score and evidence unchanged. A
+    # different market landing in the win slot, not a price move.
+    mon = _quote_monitor()
+    assert mon._sane_price("f", 2.20) == 2.20
+    mon._now += 120
+    assert mon._sane_price("f", 1.14) is None, "a 48% jump is not a price move"
+
+
+def test_a_real_price_drift_still_passes():
+    # Athletic Club 2026-09-19 moved 1.95 -> 3.00 over 23 minutes in steps; each
+    # step must pass or the gate goes blind on an honest market.
+    mon = _quote_monitor()
+    for p in (1.95, 2.10, 2.40, 2.75, 3.00):
+        mon._now += 300
+        assert mon._sane_price("f", p) == p, "rejected a genuine drift to %.2f" % p
+
+
+def test_a_long_price_on_a_dying_match_is_not_rejected_for_its_level():
+    # only MOVEMENT is tested. A first sighting at 18.00 is real information.
+    mon = _quote_monitor()
+    assert mon._sane_price("f", 18.31) == 18.31
+
+
+def test_a_stale_reference_does_not_veto_a_later_quote():
+    mon = _quote_monitor()
+    mon._sane_price("f", 2.20)
+    mon._now += config.QUOTE_JUMP_WINDOW + 1
+    assert mon._sane_price("f", 1.14) == 1.14, "reference older than the window"
+
+
+def test_a_rejected_quote_does_not_become_the_new_reference():
+    mon = _quote_monitor()
+    mon._sane_price("f", 2.20)
+    mon._now += 60
+    assert mon._sane_price("f", 1.14) is None
+    mon._now += 60
+    assert mon._sane_price("f", 2.30) == 2.30, "2.20 must still be the reference"

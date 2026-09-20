@@ -320,3 +320,25 @@ def test_the_probability_is_capped_where_calibration_stops_holding():
     hot = rules.win_probability("level", 45, 95, pm=1.10)
     assert hot == config.WINP_MAX
     assert rules.win_probability("behind", 45, 95, pm=1.10) == config.WINP_MAX
+
+
+def test_the_rule_demands_the_same_share_of_whatever_metrics_exist():
+    # Measured 2026-09-20 on 34,734 backtest rows: n=3 at (2,2) reproduces the
+    # four-metric calibration to within 0.1pp, but n=2 at (2,2) demanded EVERY
+    # metric on BOTH axes and passed a third as often. Tabulated so the
+    # difference between "2 of 4" and "2 of 2" cannot be hidden in one constant.
+    assert rules.rule_thresholds(4) == (config.NEED, config.STRONG_NEED)
+    assert rules.rule_thresholds(3) == (config.NEED, config.NEED)
+    assert rules.rule_thresholds(2) == (config.NEED_AT_TWO, config.NEED)
+
+
+def test_a_two_metric_fixture_is_no_longer_asked_for_a_perfect_score():
+    need, strong = rules.rule_thresholds(2)
+    assert need < 2, "n=2 previously required both metrics on both axes"
+    assert strong == 2, "one axis must still clear everything available"
+
+
+def test_a_fixture_with_one_metric_or_none_can_never_pass():
+    for n in (0, 1):
+        need, strong = rules.rule_thresholds(n)
+        assert strong > n, "n=%d must be unreachable - too little to judge" % n

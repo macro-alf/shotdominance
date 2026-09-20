@@ -112,6 +112,10 @@ NEED = 2                                 # how many of the four metrics must hol
 # other. With only three metrics present (no xG) STRONG_NEED falls back to NEED,
 # i.e. 2 of 3 on both.
 STRONG_NEED = _i("STRONG_NEED", 3)
+# What the rule demands when only TWO metrics report. Measured 2026-09-20: the
+# old behaviour (NEED on both, i.e. every available metric on both axes) passed
+# 1.6% of rows against the four-metric calibration's 5.7%. See rules.evaluate().
+NEED_AT_TWO = _i("NEED_AT_TWO", 1)
 
 # Kill switch for the whole gate above, so its COST can be measured against four
 # seasons rather than argued from single days. Default True = live behaviour
@@ -529,6 +533,24 @@ REQ_PER_MIN = _f("REQ_PER_MIN", 100)
 # seen price for a fixture for up to this many seconds so a momentary gap does
 # not drop the price at the decisive checkpoint.
 PRICE_CARRY_TTL = _f("PRICE_CARRY_TTL", 180.0)
+
+# QUOTE SANITY. Caught live 2026-09-19: Sunderland 0-0 AZ was quoted 2.20, the
+# odds feed dropped for two polls, and it came back at 1.14 with the score and
+# the evidence unchanged. A goalless home side does not halve in price at 65'
+# without a goal - that was a different market landing in the win slot (the
+# known live-price mapping residual). It was harmless only because it erred
+# SHORT and the gate refused it; the same fault erring LONG would have sized a
+# bet at a price that does not exist.
+#
+# It also corrupted the measurement: the 1.14 was written into blocked.csv as a
+# genuine refused price and settled with a counterfactual P&L.
+#
+# A quote is rejected when it moves by more than QUOTE_JUMP_MAX times the last
+# good price within QUOTE_JUMP_WINDOW seconds. Rejected quotes are treated as
+# NO PRICE - the honest state - rather than carried or believed.
+QUOTE_SANITY = _i("QUOTE_SANITY", 1) != 0
+QUOTE_JUMP_MAX = _f("QUOTE_JUMP_MAX", 0.40)     # +/-40% between good readings
+QUOTE_JUMP_WINDOW = _f("QUOTE_JUMP_WINDOW", 600.0)
 
 # a rate-limited/empty statistics response reads as "0 shots / no opponent",
 # which understates dominance. Reuse the last non-empty stats for a fixture for

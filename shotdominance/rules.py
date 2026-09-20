@@ -296,6 +296,24 @@ def time_factor(minute):
     return max(1.0 - w, min(1.0 + w, mult))
 
 
+def rule_thresholds(n_present):
+    """(need, strong) for a fixture with `n_present` metrics reporting.
+
+    The rule was calibrated on four-metric data and the live feed rarely
+    supplies four - 86% of September rows carried three, 2.2% carried two. The
+    thresholds are therefore tabulated per n rather than being one constant that
+    silently means different things: at n=4 "2 of 4" is half the metrics, at
+    n=2 it is all of them. See the measurement table in evaluate().
+    """
+    if n_present >= 4:
+        return config.NEED, config.STRONG_NEED          # 2 and 3
+    if n_present == 3:
+        return config.NEED, config.NEED                 # 2 and 2 - measured right
+    if n_present == 2:
+        return config.NEED_AT_TWO, config.NEED          # 1 and 2
+    return config.NEED, config.STRONG_NEED              # n<=1: unreachable, so blocked
+
+
 def evaluate(history, fid, minute, fav, opp, fav_goals, opp_goals=None):
     """The full decision for one checkpoint.
 
@@ -316,16 +334,32 @@ def evaluate(history, fid, minute, fav, opp, fav_goals, opp_goals=None):
     # before the gates below, which depend on it.
     n_present = sum(1 for k in config.KEYS if fav.get(k) is not None)
 
+    # HOW MANY METRICS THE RULE DEMANDS, GIVEN HOW MANY EXIST. Measured
+    # 2026-09-20 on 34,734 backtest rows by dropping metrics from the
+    # four-metric data and re-running the rule (base win rate 31.9%):
+    #     n=4  need 2 strong 3  ->  5.7% pass, 45.7% win   (the calibration)
+    #     n=3  need 2 strong 2  ->  4.7% pass, 45.6% win   <- already correct
+    #          need 2 strong 3  ->  2.9% pass, 47.9% win
+    #     n=2  need 2 strong 2  ->  1.6% pass, 48.0% win   <- OVER-STRICT
+    #          need 1 strong 2  ->  4.1% pass, 44.5% win   <- matches n=4 better
+    # So the three-metric fallback needed no change - it reproduces the
+    # four-metric rule to within 0.1pp. Only n=2 was wrong, and it erred strict:
+    # it demanded EVERY available metric on BOTH axes and passed a third as
+    # often as the calibration. Live frequency: n=3 is 86.1% of rows, n=4 6.9%,
+    # n=2 2.2%, so this is a small correction, not a large one.
+    # n<=1 can never pass and never should - there is not enough to judge.
+    need, strong = rule_thresholds(n_present)
+
     extra = []
     if fav_goals == 0:
-        ok = (vol_met >= config.NEED and mom_met >= config.NEED and not approx)
+        ok = (vol_met >= need and mom_met >= need and not approx)
         basis = "0 goals: volume AND momentum"
     else:
         # vol_th already carries the (fav_goals + 1) multiplier, so the volume
         # test IS the "enough for another goal" test - no second, separately
         # doubled bar is needed.
-        a = mom_met >= config.NEED and not approx
-        b = vol_met >= config.NEED
+        a = mom_met >= need and not approx
+        b = vol_met >= need
         ok = a or b
         basis = ("scored %d: momentum(%s) OR %dx cumulative(%s)"
                  % (fav_goals, "yes" if a else "no", fav_goals + 1,
@@ -338,12 +372,11 @@ def evaluate(history, fid, minute, fav, opp, fav_goals, opp_goals=None):
     # The better of the two must now reach STRONG_NEED and the other must still
     # reach NEED. With xG absent only three metrics exist, so STRONG_NEED falls
     # back to NEED (2 of 3 on both) rather than demanding 3 of 3.
-    strong = config.STRONG_NEED if n_present >= 4 else config.NEED
     if config.STRONG_GATE and ok and (
-            max(vol_met, mom_met) < strong or min(vol_met, mom_met) < config.NEED):
+            max(vol_met, mom_met) < strong or min(vol_met, mom_met) < need):
         ok = False
-        basis += (" [BLOCKED: vol %d mom %d, need %d on one and %d on the other]"
-                  % (vol_met, mom_met, strong, config.NEED))
+        basis += (" [BLOCKED: vol %d mom %d of %d, need %d on one and %d on the "
+                  "other]" % (vol_met, mom_met, n_present, strong, need))
 
     # CLEAR DOMINANCE. An alert claims the favourite is dominating but not
     # winning, so it must not fire while the opponent is out-performing it on

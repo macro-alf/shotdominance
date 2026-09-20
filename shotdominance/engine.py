@@ -48,6 +48,7 @@ class Monitor:
         self.polls = 0           # polls this run, for the periodic quota check
         self.quota_warned = False
         self.quota_frac = 0.0    # day's allowance used, gates SLOW_POLL
+        self.good_price = {}     # fid -> (ts, price) last quote that passed sanity
         self.poll_seconds = config.POLL_SECONDS   # monitor.py sleeps by this
 
     # --- persistence --------------------------------------------------------
@@ -173,6 +174,37 @@ class Monitor:
         self.tg.send("\n".join(lines))
         print("   >>> QUOTE %s @ %.2f -> stake %.0f (conv %.0f)"
               % (ctx["label"], price, sz["stake"], ctx["conv"]), flush=True)
+
+    # --- quote sanity -------------------------------------------------------
+    def _sane_price(self, fid, price, label=""):
+        """Reject a quote that cannot be a real move on the last good one.
+
+        Sunderland 0-0 AZ (2026-09-19) went 2.20 -> feed gap -> 1.14 with the
+        score and the evidence unchanged: a different market landing in the win
+        slot. A rejected quote becomes None - the honest "no price" state - so
+        the gate has nothing to test and the ledger records no price, rather
+        than believing a number that would size a bet at odds nobody offers.
+
+        Only movement is tested, never the level: a genuinely long price on a
+        dying match is real information and must pass.
+        """
+        if price is None:
+            return None
+        if not config.QUOTE_SANITY:
+            self.good_price[fid] = (self._now, price)
+            return price
+        last = self.good_price.get(fid)
+        if last and (self._now - last[0]) <= config.QUOTE_JUMP_WINDOW and last[1] > 0:
+            move = abs(price - last[1]) / last[1]
+            if move > config.QUOTE_JUMP_MAX:
+                print("   ! %s: quote %.2f rejected - %.0f%% from %.2f seen %.0fs "
+                      "ago (max %.0f%%). Treated as NO PRICE."
+                      % (label or fid, price, 100 * move, last[1],
+                         self._now - last[0], 100 * config.QUOTE_JUMP_MAX),
+                      flush=True)
+                return None
+        self.good_price[fid] = (self._now, price)
+        return price
 
     # --- blocked-signal ledger ----------------------------------------------
     def _record_block(self, fid, cp, ctx, blocked_by):
@@ -730,7 +762,9 @@ class Monitor:
             if cached and (self._now - cached[0]) <= config.PRICE_CARRY_TTL:
                 fx_prices = cached[1]      # carry the last live odds over the gap
         pinfo = apifootball.signal_price(fx_prices, side, behind)
-        price = pinfo["price"]
+        price = self._sane_price(fid, pinfo["price"], label)
+        if price is None:
+            pinfo = dict(pinfo, price=None)
         nd = ev.n_present
         print("   %-38s %2d' fav=%-14s %s vol=%d/%d mom=%d/%d%s conv=%.0f "
               "pm=%.2f odds=%s cp=%s"
