@@ -117,6 +117,40 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **SUN 20 SEP: CONVICTION IS INFLATED WHEN THE MOMENTUM WINDOW IS FABRICATED.**
+  Found live the same afternoon the 0.40/0.60 blend shipped. When `approx` is
+  set, `window_delta` hands back the WHOLE MATCH in place of a trailing window,
+  so `s_mom` is not a momentum score at all - it is cumulative totals wearing a
+  momentum label. Conviction is now 60% momentum, so that fabricated number
+  dominates the score. Under the old 0.30 weighting it was diluted enough that
+  nobody noticed.
+
+  **Three sightings on 2026-09-20, worst first:**
+
+      conv 76  Frosinone 2-0 Como   46'  vol 0/4 mom 0/4  odds 2.62  need 1.80
+      conv 70  Frosinone 1-0 Como   39'  vol 0/4 mom 0/4  odds n/a
+      conv 78  Frosinone 1-0 Como   24'  vol 0/4 mom 0/4  odds 1.44
+
+  A side TWO GOALS DOWN with ZERO metrics realised, scoring above the 60 firing
+  floor and clearing the price gate by 82 cents.
+
+  **Nothing fires today** - `approx` sets `ok=False` in the same function, so
+  the evidence rule blocks it before conviction is consulted. The damage is that
+  it ranks top of the board on no evidence, and would write a meaningless
+  `conviction` into any ledger row. But it is one refactor away from being live:
+  the only thing between this and a recommended bet is a separate guard.
+
+  **The fix:** zero or heavily discount conviction when `approx` is set. 60% of
+  the score is invented in that state, so reporting a number at all is
+  misleading. Zeroing is the honest choice; a cap (say 40) would preserve some
+  board ordering if that turns out to matter.
+  **Add a test** that `approx` can never produce a conviction over the firing
+  floor, so the guard cannot be removed by a later refactor without failing.
+
+  Related: the same fabricated window is why `evaluate()` blocks with
+  "no momentum window >= MIN_WINDOW". That block is correct and must stay - this
+  item is only about the SCORE, not the gate.
+
 - [x] **EDGE TOLERANCE 0.20 - SHIPPED 2026-09-19, LANDS AT TOMORROW'S LAUNCH.**
   Alf: "if the odds live you see are 0.2 or less away from the minimum required
   odds, still fire the signal and report the minimum odds in Telegram. If no live
