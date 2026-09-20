@@ -117,6 +117,42 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **MON 21 SEP: REBUILD THE QUOTE PLAUSIBILITY CHECK, ANCHORED ON PRE-MATCH
+  PRICE AND SCORELINE.** Alf asked for this after the first attempt was disabled
+  the day it shipped (`581d39c`). The band is OFF (`QUOTE_SANITY=0`); the logic
+  and its tests are retained behind the flag.
+
+  **Why v1 failed - do not repeat either mistake.**
+  1. It judged MOVEMENT against the last quote and nothing else. A goal moves a
+     price far more than 40%, so every goal looked like a mis-map: 96 quotes
+     discarded across 68 fixtures in eight hours (Paderborn 3.40->1.67 at 2-1,
+     Estoril 3.25->1.12 at 1-2, Gostepe 4.33->1.17 at 1-2).
+  2. It could INVERT. With no previous quote, the first sighting was accepted
+     unexamined and became the reference. Gostepe 1-1 Rizespor was first seen at
+     1.22 - a double-chance price in the win slot - so when the genuine 3.40
+     arrived it was rejected as 178% away. A signal that should have fired SIZED
+     at 3.40 against a 2.77 requirement fired at stake 0.
+
+  **What v2 must do instead.** Judge the LEVEL against what the fixture can
+  plausibly be worth, which is knowable without any history:
+  - inputs: pre-match favourite price, current scoreline, minute, and which
+    market is being quoted (win vs double chance);
+  - a side priced 2.47 pre-match and LEVEL at 70' cannot be 1.22 to win - that
+    is roughly the double chance, which is the tell for the known mapping
+    residual (Low queue, "live-price mapping residual");
+  - accept anything inside the envelope, whatever it does between polls. A goal
+    is the commonest cause of a big move and must never be penalised.
+
+  **Build the envelope from data, not judgement.** The backtest carries
+  `fav_price` and the scoreline at every checkpoint; measure the observed
+  distribution of live price given (pre-match, state, minute) and set the
+  envelope from its tails. Anything tighter than the data supports will repeat
+  v1 in a new form.
+
+  **Acceptance test before it ships again:** replay 2026-09-20's log through it
+  and confirm it rejects Gostepe's 1.22 while accepting all four of the
+  goal-driven moves listed above. If it cannot do both, it is not ready.
+
 - [x] **MEASURED AND REJECTED 2026-09-20: MOMENTUM-ONLY ONCE THE FAVOURITE HAS
   SCORED.** Alf asked for it after Villarreal 1-1 Levante (cp45, conv 64,
   `mom 3/3` but `vol 0/3`, refused) - the idea being that once a side scores the
