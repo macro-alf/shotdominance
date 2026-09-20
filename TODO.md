@@ -135,10 +135,26 @@ for context. Last updated 2026-08-29.
   floor and clearing the price gate by 82 cents.
 
   **Nothing fires today** - `approx` sets `ok=False` in the same function, so
-  the evidence rule blocks it before conviction is consulted. The damage is that
-  it ranks top of the board on no evidence, and would write a meaningless
-  `conviction` into any ledger row. But it is one refactor away from being live:
-  the only thing between this and a recommended bet is a separate guard.
+  the evidence rule blocks it before conviction is consulted. But it is one
+  refactor away from being live: the only thing between this and a recommended
+  bet is a separate guard.
+
+  **THE DAMAGE IS NOT COSMETIC - IT CORRUPTS THE REQUIRED PRICE.** Corrected
+  2026-09-20 after describing it as a board-ranking problem. `min_price()` takes
+  conviction, and conviction >= WINP_STRONG_FROM adds WINP_STRONG_BONUS to
+  P(win), which LOWERS the price demanded. An inflated conviction therefore
+  understates the requirement. Worked example the same afternoon, FK Jablonec
+  0-1 Zlin:
+
+      62'  conv 61 (approx, fabricated)  P 51.3%  required 1.98
+      66'  conv real, window repaired    P 48.0%  required 2.12
+      71'  conv real                     P 44.0%  required 2.32
+
+  At 62' the fixture was quoted 1.85 and read as 13 cents short - inside the
+  0.20 tolerance, so it would have FIRED with a warning. With the real window it
+  was 32 cents short at both later checkpoints, outside the tolerance, and was
+  refused twice. The fabricated window did not merely mis-rank it; it made an
+  unbackable fixture look borderline-backable.
 
   **The fix:** zero or heavily discount conviction when `approx` is set. 60% of
   the score is invented in that state, so reporting a number at all is
