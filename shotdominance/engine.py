@@ -49,6 +49,7 @@ class Monitor:
         self.quota_warned = False
         self.quota_frac = 0.0    # day's allowance used, gates SLOW_POLL
         self.good_price = {}     # fid -> (ts, price) last quote that passed sanity
+        self.odd_price = {}      # fid -> (price, consecutive sightings) out of band
         self.poll_seconds = config.POLL_SECONDS   # monitor.py sleeps by this
 
     # --- persistence --------------------------------------------------------
@@ -181,12 +182,18 @@ class Monitor:
 
         Sunderland 0-0 AZ (2026-09-19) went 2.20 -> feed gap -> 1.14 with the
         score and the evidence unchanged: a different market landing in the win
-        slot. A rejected quote becomes None - the honest "no price" state - so
-        the gate has nothing to test and the ledger records no price, rather
-        than believing a number that would size a bet at odds nobody offers.
+        slot. A rejected quote becomes None - the honest "no price" state.
 
-        Only movement is tested, never the level: a genuinely long price on a
-        dying match is real information and must pass.
+        THE DISCRIMINATOR IS TRANSIENT vs SUSTAINED, not size. Energie Cottbus
+        v St. Pauli (2026-09-20) drifted 2.30 -> 4.33 -> 4.75 -> 5.00 and stayed
+        there; the first version rejected the jump and then, because a rejected
+        quote never became the new reference, rejected every later poll too and
+        left the fixture permanently unpriced. A mis-map flickers; a real move
+        holds. So an out-of-band level that repeats QUOTE_CONFIRM times in a row
+        is accepted as the market having genuinely moved.
+
+        Only movement is tested, never the level: a first sighting at 18.31 on
+        a dying match is real information and passes.
         """
         if price is None:
             return None
@@ -197,12 +204,22 @@ class Monitor:
         if last and (self._now - last[0]) <= config.QUOTE_JUMP_WINDOW and last[1] > 0:
             move = abs(price - last[1]) / last[1]
             if move > config.QUOTE_JUMP_MAX:
-                print("   ! %s: quote %.2f rejected - %.0f%% from %.2f seen %.0fs "
-                      "ago (max %.0f%%). Treated as NO PRICE."
-                      % (label or fid, price, 100 * move, last[1],
-                         self._now - last[0], 100 * config.QUOTE_JUMP_MAX),
-                      flush=True)
-                return None
+                seen, n = self.odd_price.get(fid, (None, 0))
+                # "the same level" allows the normal jitter of a live market
+                same = seen is not None and abs(price - seen) <= 0.10 * seen
+                n = n + 1 if same else 1
+                self.odd_price[fid] = (price, n)
+                if n < config.QUOTE_CONFIRM:
+                    print("   ! %s: quote %.2f held back - %.0f%% from %.2f seen "
+                          "%.0fs ago (max %.0f%%), %d of %d confirmations"
+                          % (label or fid, price, 100 * move, last[1],
+                             self._now - last[0], 100 * config.QUOTE_JUMP_MAX,
+                             n, config.QUOTE_CONFIRM), flush=True)
+                    return None
+                print("   ! %s: quote %.2f ACCEPTED after %d consistent polls - "
+                      "the market has moved, not mis-mapped"
+                      % (label or fid, price, n), flush=True)
+        self.odd_price.pop(fid, None)
         self.good_price[fid] = (self._now, price)
         return price
 

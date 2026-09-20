@@ -552,6 +552,12 @@ PRICE_CARRY_TTL = _f("PRICE_CARRY_TTL", 180.0)
 QUOTE_SANITY = _i("QUOTE_SANITY", 1) != 0
 QUOTE_JUMP_MAX = _f("QUOTE_JUMP_MAX", 0.40)     # +/-40% between good readings
 QUOTE_JUMP_WINDOW = _f("QUOTE_JUMP_WINDOW", 600.0)
+# How many consecutive polls an out-of-band level must hold before it is taken
+# as a real move rather than a mis-map. Added 2026-09-20 within hours of the
+# band going live: Energie Cottbus v St. Pauli drifted 2.30 -> 5.00 and stayed,
+# and the first version rejected it forever because a rejected quote never
+# refreshed the reference. A mis-map flickers; a real move holds.
+QUOTE_CONFIRM = _i("QUOTE_CONFIRM", 2)
 
 # a rate-limited/empty statistics response reads as "0 shots / no opponent",
 # which understates dominance. Reuse the last non-empty stats for a fixture for

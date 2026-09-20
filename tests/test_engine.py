@@ -660,3 +660,31 @@ def test_a_rejected_quote_does_not_become_the_new_reference():
     assert mon._sane_price("f", 1.14) is None
     mon._now += 60
     assert mon._sane_price("f", 2.30) == 2.30, "2.20 must still be the reference"
+
+
+def test_a_sustained_move_is_accepted_once_it_holds():
+    """Energie Cottbus v St. Pauli, 2026-09-20: 2.30 -> 4.33 -> 4.75 -> 5.00 and
+    it stayed there. The first version of the band rejected the jump and then
+    every later poll, because a rejected quote never refreshed the reference -
+    the fixture was left permanently unpriced. A mis-map flickers; a real move
+    holds."""
+    mon = _quote_monitor()
+    assert mon._sane_price("f", 2.30) == 2.30
+    mon._now += 80
+    assert mon._sane_price("f", 4.33) is None, "first sighting is held back"
+    mon._now += 80
+    assert mon._sane_price("f", 4.75) == 4.75, "it held - accept the real move"
+    mon._now += 80
+    assert mon._sane_price("f", 5.00) == 5.00, "reference has moved with it"
+
+
+def test_a_flickering_misquote_is_still_refused():
+    # the Sunderland shape: one bad print, then back to the real level.
+    mon = _quote_monitor()
+    mon._sane_price("f", 2.20)
+    mon._now += 60
+    assert mon._sane_price("f", 1.14) is None
+    mon._now += 60
+    assert mon._sane_price("f", 2.25) == 2.25, "the real price returns untouched"
+    mon._now += 60
+    assert mon._sane_price("f", 1.14) is None, "and the bad one is refused again"
