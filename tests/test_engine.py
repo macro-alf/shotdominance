@@ -688,3 +688,19 @@ def test_a_flickering_misquote_is_still_refused():
     assert mon._sane_price("f", 2.25) == 2.25, "the real price returns untouched"
     mon._now += 60
     assert mon._sane_price("f", 1.14) is None, "and the bad one is refused again"
+
+
+def test_the_alert_context_survives_a_restart():
+    """2026-09-20: the monitor was restarted between the Wolves alert and Alf's
+    reply. `last_alert` was memory-only, so record_bet built a row with no
+    match, no back and no side - and settle_bet grades from `side`, so it would
+    have settled as the wrong team. The row had to be repaired by hand."""
+    mon = engine.Monitor(None, StubTg(), set())
+    mon.last_alert["1563177"] = {"label": "Wolves 0-0 West Brom", "fav": "Wolves",
+                                 "side": "home", "market": "win"}
+    mon.awaiting["chat"] = "1563177"
+    mon.save()
+    fresh = engine.Monitor(None, StubTg(), set())
+    fresh.load()
+    assert fresh.last_alert.get("1563177", {}).get("label") == "Wolves 0-0 West Brom"
+    assert fresh.last_alert["1563177"]["side"] == "home"

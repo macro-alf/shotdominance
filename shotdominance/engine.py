@@ -58,7 +58,14 @@ class Monitor:
             "acked": sorted(self.acked), "muted": sorted(self.muted),
             "alerted_cp": sorted(self.alerted_cp),
             "msg2fid": self.msg2fid,
-            "await": self.awaiting, "bets": self.bets, "offset": self.offset})
+            "await": self.awaiting, "bets": self.bets, "offset": self.offset,
+            # PERSIST THE ALERT CONTEXT. It used to live only in memory, so a
+            # restart between an alert and Alf's reply produced a blotter row
+            # with no match, no side and no back - and settle_bet grades the
+            # bet from `side`, so it would have been settled as the WRONG TEAM.
+            # Happened for real on 2026-09-20 (Wolves 0-0 West Brom, 1563177,
+            # 1502 @ 2.10) and the row had to be repaired by hand.
+            "last_alert": self.last_alert})
 
     def load(self):
         d = state.load(config.STATE_PATH)
@@ -71,6 +78,7 @@ class Monitor:
         self.awaiting.update(d.get("await") or {})
         self.bets.extend(d.get("bets") or [])
         self.offset = d.get("offset", 0)
+        self.last_alert.update(d.get("last_alert") or {})
         print("  state restored: %d acked, %d bets"
               % (len(self.acked), len(self.bets)), flush=True)
 
@@ -250,6 +258,37 @@ class Monitor:
     # --- blotter ------------------------------------------------------------
     def record_bet(self, fid, stake, price):
         ctx = self.last_alert.get(fid) or {}
+        if not ctx.get("label"):
+            # Never write a bet we cannot identify: settle_bet decides which
+            # side was backed from `side`/`back`, so a blind row settles as the
+            # wrong team. One /fixtures call is far cheaper than a mis-settled
+            # bet. See the note in save() for how this happened.
+            print("   ! no alert context for %s - recovering it from the feed"
+                  % fid, flush=True)
+            try:
+                rows = self.api.get("/fixtures", id=fid)
+                fx = rows[0]
+                t, g = fx.get("teams") or {}, fx.get("goals") or {}
+                home, away = (t.get("home") or {}), (t.get("away") or {})
+                pm = self.prematch.get(fid)
+                side = pm[0] if pm else "home"
+                fav = home if side == "home" else away
+                ctx = dict(label="%s %s-%s %s" % (home.get("name"),
+                                                  g.get("home"), g.get("away"),
+                                                  away.get("name")),
+                           league=((fx.get("league") or {}).get("name") or ""),
+                           minute=(((fx.get("fixture") or {}).get("status")
+                                    or {}).get("elapsed") or ""),
+                           fav=fav.get("name"), side=side,
+                           score="%s-%s" % (g.get("home"), g.get("away")),
+                           market="win" if (g.get("home") == g.get("away"))
+                                  else ("1X" if side == "home" else "X2"))
+                self.last_alert[fid] = ctx
+            except Exception as e:
+                self.tg.send("Could not identify the fixture for that bet (%s). "
+                             "It is logged but the row is incomplete - tell "
+                             "Claude before it settles." % fid)
+                print("   ! context recovery failed: %s" % e, flush=True)
         bet = blotter.new_bet(fid, ctx, stake, price)
         self.bets.append(bet)
         blotter.write(config.BLOTTER_PATH, self.bets)
