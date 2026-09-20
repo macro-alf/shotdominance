@@ -117,6 +117,39 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [x] **MEASURED AND REJECTED 2026-09-20: MOMENTUM-ONLY ONCE THE FAVOURITE HAS
+  SCORED.** Alf asked for it after Villarreal 1-1 Levante (cp45, conv 64,
+  `mom 3/3` but `vol 0/3`, refused) - the idea being that once a side scores the
+  volume bar is multiplied by goals_needed and becomes unreachable, so judge on
+  momentum alone. Measured on 14,544 backtest rows where the favourite already
+  had a goal (base win 31.0%), then Alf withdrew it on the numbers.
+
+      CURRENT   momentum OR volume, + strong gate    186 pass (1.3%)   win 44.6%   lift +13.6pp
+      PROPOSED  momentum >= 3, volume dropped      2,454 pass (16.9%)  win 37.9%   lift  +6.9pp
+
+  **Thirteen times the signals at roughly half the edge.** And the rows it would
+  unlock are the weakest of the set:
+
+      mom>=3 and vol==0   1,831 rows   win 35.2%   lift +4.2pp
+      mom==4 and vol==0     756 rows   win 34.8%   lift +3.8pp
+
+  By goal difference, momentum-only with no volume:
+
+      level after scoring   1,862 rows   39.0%
+      one goal down           506 rows   39.3%
+      two goals down           70 rows    8.6%   <- close to hopeless
+
+  **So the volume requirement is doing real work, and the tripled bar at 1-1 is
+  not the defect it looks like from the board.** A fixture showing `mom 3/3
+  vol 0/3` is genuinely weaker than one clearing both, by about 9 percentage
+  points of win rate.
+
+  What remains open, and is NOT settled by this: whether the price gate
+  downstream would have filtered the weak ones anyway (a 37.9% win rate needs
+  2.72 to break even). That would shift the burden from evidence to price, which
+  is a coherent design - but it is a different system, not a tweak, and it would
+  need its own measurement before anyone tries it.
+
 - [ ] **SUN 20 SEP: CONVICTION IS INFLATED WHEN THE MOMENTUM WINDOW IS FABRICATED.**
   Found live the same afternoon the 0.40/0.60 blend shipped. When `approx` is
   set, `window_delta` hands back the WHOLE MATCH in place of a trailing window,
