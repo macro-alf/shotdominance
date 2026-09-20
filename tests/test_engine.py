@@ -616,10 +616,27 @@ def test_a_price_at_or_above_the_requirement_carries_no_short_warning():
     assert "SHORT OF THE MINIMUM" not in txt
 
 
-def _quote_monitor():
+def _quote_monitor(monkeypatch=None):
+    """A monitor with the quote band FORCED ON. It ships disabled (see the
+    post-mortem at config.QUOTE_CONFIRM) but the logic is kept for the rebuild,
+    so these tests still pin its behaviour."""
     mon = engine.Monitor(None, None, set())
     mon._now = 1000.0
+    config.QUOTE_SANITY = True
     return mon
+
+
+def test_the_quote_band_ships_disabled():
+    """2026-09-20: live for eight hours, discarded 96 quotes across 68 fixtures
+    because A GOAL LEGITIMATELY MOVES A PRICE BY MORE THAN 40% and the band
+    cannot see the scoreline. It also inverted on Gostepe - accepted a
+    double-chance quote of 1.22 as the reference, then rejected the genuine 3.40
+    and fired a signal unsized that should have been sized. Off until the
+    rebuild anchors plausibility on pre-match price and scoreline."""
+    import importlib
+    from shotdominance import config as fresh
+    importlib.reload(fresh)
+    assert fresh.QUOTE_SANITY is False, "the band must not ship enabled again"
 
 
 def test_the_sunderland_misquote_is_rejected():

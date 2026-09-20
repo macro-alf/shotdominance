@@ -549,7 +549,9 @@ PRICE_CARRY_TTL = _f("PRICE_CARRY_TTL", 180.0)
 # A quote is rejected when it moves by more than QUOTE_JUMP_MAX times the last
 # good price within QUOTE_JUMP_WINDOW seconds. Rejected quotes are treated as
 # NO PRICE - the honest state - rather than carried or believed.
-QUOTE_SANITY = _i("QUOTE_SANITY", 1) != 0
+# DISABLED 2026-09-20, the same day it shipped. See the post-mortem below; turn
+# it back on with QUOTE_SANITY=1 only once the rebuild described there is done.
+QUOTE_SANITY = _i("QUOTE_SANITY", 0) != 0
 QUOTE_JUMP_MAX = _f("QUOTE_JUMP_MAX", 0.40)     # +/-40% between good readings
 QUOTE_JUMP_WINDOW = _f("QUOTE_JUMP_WINDOW", 600.0)
 # How many consecutive polls an out-of-band level must hold before it is taken
@@ -558,6 +560,29 @@ QUOTE_JUMP_WINDOW = _f("QUOTE_JUMP_WINDOW", 600.0)
 # and the first version rejected it forever because a rejected quote never
 # refreshed the reference. A mis-map flickers; a real move holds.
 QUOTE_CONFIRM = _i("QUOTE_CONFIRM", 2)
+
+# POST-MORTEM, 2026-09-20. The band was written to catch Sunderland's 1.14
+# mis-map and was live for eight hours. It did more harm than the fault it
+# targeted, for one reason: A GOAL LEGITIMATELY MOVES A PRICE BY FAR MORE THAN
+# 40%, and the band has no idea the score has changed.
+#
+#     96 quotes discarded across 68 fixtures in a single day
+#     Paderborn 3.40 -> 1.67 (score 2-1)   Estoril 3.25 -> 1.12 (score 1-2)
+#     Gostepe   4.33 -> 1.17 (score 1-2)   Amed 11.00 -> 19.00 (genuine drift)
+#
+# Worse, it can invert. Gostepe 1-1 Rizespor was first seen at 1.22 - a
+# double-chance quote in the win slot, the known mapping residual. With no
+# previous quote the band accepted it and made it the reference. When the real
+# 3.40 arrived it was rejected as "178% away", the fixture was treated as
+# unpriced, and a signal that should have fired SIZED at 3.40 against a 2.77
+# requirement fired at stake 0 instead. The band trusted the mis-map and
+# defended it against the truth.
+#
+# THE REBUILD, if it is attempted: anchor plausibility on the PRE-MATCH price
+# and the current SCORELINE, not on the previous quote. A side priced 2.47
+# pre-match and level at 70' cannot credibly be 1.22 to win; that is checkable
+# with no reference history and cannot be poisoned. Movement alone is not a
+# signal of error - the score moving is the commonest cause of a large move.
 
 # a rate-limited/empty statistics response reads as "0 shots / no opponent",
 # which understates dominance. Reuse the last non-empty stats for a fixture for
