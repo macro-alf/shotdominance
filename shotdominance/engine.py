@@ -28,6 +28,15 @@ class Monitor:
         self.best_conv = {}      # fid -> highest conviction already alerted
         self.last_conv = {}      # fid -> last conviction, for adaptive polling
         self.skipped = 0         # fixtures skipped this poll as too dull
+        # OBSERVABILITY. Three times in a week the answer to "why did nothing
+        # fire?" was a silent data loss nobody was counting: an API timeout that
+        # broke a momentum window (Aris Thessalonikis 2026-09-19, 21 shots to 2,
+        # lost cp60 and cp65), a fixture the feed never described at all
+        # (Fenerbahce 2026-09-15, vol 0/0 for ninety minutes), and a bulk odds
+        # outage that blinded every watched fixture at once. Each is now
+        # counted for the day and printed, so the cost is visible instead of
+        # being reconstructed from the log afterwards.
+        self.lost = dict(no_window=0, no_stats=0, no_price=0, feed_fail=0)
         self.pens = {}           # fid -> {'at': minute last checked, 'seen': set(key),
                                  #         'sub': {team_id: {metric: amount}}}
         self._now = 0.0
@@ -665,6 +674,11 @@ class Monitor:
               % (len(fixtures), watched, self.api.reqs,
                  "" if not self.skipped else "   [%d dull skipped]" % self.skipped,
                  "" if self.xg_seen else "   [xG NOT SEEN YET]"), flush=True)
+        lost = ", ".join("%s %d" % (k.replace("_", " "), v)
+                         for k, v in sorted(self.lost.items()) if v)
+        if lost:
+            print("   lost to data: %s   (evaluations the feed made impossible, "
+                  "running total for the day)" % lost, flush=True)
         self.skipped = 0
 
     def _quota_guard(self):
@@ -728,6 +742,8 @@ class Monitor:
         can ever fire, so it has to be louder than a quiet evening.
         """
         err = getattr(self.api, "last_error", None)
+        if err:
+            self.lost["feed_fail"] += 1
         if not err:
             if self.feed_bad >= config.FEED_BAD_POLLS:
                 self.tg.send("Feed recovered - API-Football is answering again.")
@@ -808,6 +824,10 @@ class Monitor:
         ev = rules.evaluate(self.history, fid, minute, fstat, ostat,
                             fav_goals, opp_goals)
         self.last_conv[fid] = ev.conv
+        if ev.approx:
+            self.lost["no_window"] += 1          # judged blind: feed gap
+        if ev.n_present == 0:
+            self.lost["no_stats"] += 1           # the feed never described it
         # When the favourite is behind the tradeable market is the double chance
         # (win or draw), not an outright win from behind. When level it is the
         # win market as before.
@@ -819,6 +839,8 @@ class Monitor:
                 fx_prices = cached[1]      # carry the last live odds over the gap
         pinfo = apifootball.signal_price(fx_prices, side, behind)
         price = self._sane_price(fid, pinfo["price"], label)
+        if price is None:
+            self.lost["no_price"] += 1
         if price is None:
             pinfo = dict(pinfo, price=None)
         nd = ev.n_present
@@ -987,4 +1009,18 @@ class Monitor:
             self.open_pos[fid] = sz["stake"]
         print("   >>> SIGNAL %s conv=%.0f stake=%.0f (%s)"
               % (label, ev.conv, sz["stake"], ev.basis), flush=True)
+        # RECORD THE ACCEPTED POPULATION TOO, not only the refusals. Without it
+        # the ledger can never answer whether the gate is too LENIENT: every row
+        # is a refusal, so a price far above the requirement never appears -
+        # those are accepted and become signals. Asked for 2026-09-21 when a
+        # live price ceiling could not be calibrated for exactly that reason
+        # (Benfica 21.00 against a 2.56 requirement, twelve such sightings in a
+        # week, and no data anywhere to say where the line should sit).
+        # Recorded with blocked_by="fired" so the two populations stay separable.
+        self._record_block(fid, cp, dict(
+            league=lg.get("name"), label=label, minute=minute, state=state,
+            side=side, market=pinfo["market"], fav=fav_name,
+            score="%d-%d" % (hs, as_), conv=ev.conv, vol_met=ev.vol_met,
+            mom_met=ev.mom_met, n_present=nd, pm=pm, price=price, need=need,
+            winp=rules.win_probability(state, minute, ev.conv, pm)), "fired")
         self.save()

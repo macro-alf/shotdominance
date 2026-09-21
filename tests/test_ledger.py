@@ -93,3 +93,26 @@ def test_summing_pnl_at_quote_measures_whether_the_gate_pays():
         ledger.settle_block(r, "Galatasaray", 1, 0)
     total = sum(float(r["pnl_at_quote"]) for r in rows)
     assert total > 0, "three wins at 1.83 must show a positive counterfactual"
+
+
+def test_a_fired_signal_is_recorded_alongside_the_refusals():
+    """Asked for 2026-09-21. A live price ceiling could not be calibrated
+    because every ledger row was a REFUSAL - a price far above the requirement
+    never appears, since the gate accepts those and they become signals. With
+    both populations recorded, "is the gate too lenient at long prices" becomes
+    answerable."""
+    ctx = dict(CTX, price=8.00, need=2.56, conv=72.0)
+    r = ledger.new_block("1", 70, ctx, "fired")
+    assert r["blocked_by"] == "fired"
+    assert r["live_price"] == "8.00" and r["need"] == "2.56"
+    ledger.settle_block(r, "Galatasaray", 0, 1)
+    assert r["status"] == "lost"
+    assert r["pnl_at_quote"] == -1.0
+
+
+def test_fired_and_refused_rows_stay_separable():
+    rows = [ledger.new_block("1", 45, CTX, "price"),
+            ledger.new_block("2", 45, dict(CTX, price=8.0), "fired")]
+    fired = [r for r in rows if r["blocked_by"] == "fired"]
+    refused = [r for r in rows if r["blocked_by"] != "fired"]
+    assert len(fired) == 1 and len(refused) == 1

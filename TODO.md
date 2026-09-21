@@ -117,6 +117,35 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **A LIVE PRICE CEILING - BLOCKED ON DATA, NOW BEING COLLECTED (2026-09-21).**
+  Twelve sightings in a week of a live quote far above the model's requirement on
+  a hopeless position: Benfica 21.00 v need 2.56 (two down, 69'), Galatasaray
+  26.00, Ajax 10.00, Le Mans 21.00, Stuttgart 20.16. `MAX_ODDS` gates the
+  PRE-MATCH price only and with `PRICE_GATE` off nothing caps the live quote.
+  Every one was saved by an expired checkpoint or absent evidence - luck.
+
+  **It could not be calibrated and was not built.** The ledger holds only
+  REFUSALS, so a price far above the requirement never appears in it - the gate
+  accepts those and they become signals. Measured 2026-09-21 on all 50 settled
+  priced refusals:
+
+      price/need    n   win%   pnl/unit
+      <0.70         3    33%    -0.62
+      0.70-0.85    22    27%    -0.48
+      0.85-1.00    17    65%    +0.19
+      1.00+         8    50%    -0.01
+
+  There is no sample above ~1.0 and the backtest carries no live prices at all.
+  Any threshold would have been invented, which is what Alf ruled out on
+  2026-09-20 ("don't implement it if there is no statistical evidence").
+
+  **What changed:** fired signals are now written to the ledger with
+  `blocked_by="fired"`, so the ACCEPTED population is recorded with its
+  price/need ratio and settles like any other row. Once there are enough fired
+  rows, "do long-priced signals underperform?" becomes a query, and the ceiling
+  can be set from the answer instead of guessed.
+  **Do not set a ceiling before that query returns a number.**
+
 - [ ] **MON 21 SEP: REBUILD THE QUOTE PLAUSIBILITY CHECK, ANCHORED ON PRE-MATCH
   PRICE AND SCORELINE.** Alf asked for this after the first attempt was disabled
   the day it shipped (`581d39c`). The band is OFF (`QUOTE_SANITY=0`); the logic
@@ -186,7 +215,11 @@ for context. Last updated 2026-08-29.
   is a coherent design - but it is a different system, not a tweak, and it would
   need its own measurement before anyone tries it.
 
-- [ ] **SUN 20 SEP: CONVICTION IS INFLATED WHEN THE MOMENTUM WINDOW IS FABRICATED.**
+- [x] **DONE 2026-09-21: CONVICTION IS INFLATED WHEN THE MOMENTUM WINDOW IS
+  FABRICATED.** Capped below CONV_FIRE_MIN when `approx` is set, so it can
+  neither cross the firing floor nor earn the strong-evidence bonus that was
+  understating the required price. Two tests pin it.
+  ~~Original entry below.~~
   Found live the same afternoon the 0.40/0.60 blend shipped. When `approx` is
   set, `window_delta` hands back the WHOLE MATCH in place of a trailing window,
   so `s_mom` is not a momentum score at all - it is cumulative totals wearing a
@@ -1376,7 +1409,13 @@ for context. Last updated 2026-08-29.
   Interacts with the conviction item — a one-metric fixture posting conv 88 is
   noise in the same place.
 
-- [ ] **OBSERVABILITY: silent skips and unmeasured outages.** Queued 2026-08-30.
+- [x] **DONE 2026-09-21: OBSERVABILITY - silent data losses are now counted.**
+  `self.lost` tracks no_window / no_stats / no_price / feed_fail for the day
+  and the poll header prints them when non-zero. The three cases that
+  prompted it: Aris losing cp60 and cp65 to an API timeout while 21 shots to
+  2, Fenerbahce reporting vol 0/0 for ninety minutes, and bulk odds outages
+  blinding every watched fixture at once.
+  ~~Original entry below.~~ Queued 2026-08-30.
   Three times in a week the answer to "why isn't X being watched?" required
   reading source: Roma (08-24), Barcelona and Juventus (08-29 — both absent from
   the log all night, near-certainly under the 1.30 pre-match floor, the shortest
@@ -1395,34 +1434,12 @@ for context. Last updated 2026-08-29.
   the whole 16:00 block lost cp45 through cp60. Decide whether snapshot history
   should survive a feed gap, and at minimum log and count what outages cost.
 
-- [ ] **CHECK MON 24 AUG: is the signal drought real?** UPDATED 2026-08-30 —
-  the answer is now clearly YES, and it is getting worse. Lifetime rate is 0.4%
-  (16 signals / 4,446 checkpoints). **The last three days are 5 from 2,855
-  (0.2%), and 08-29 alone was 2 from 1,311 (0.15%) on a 71-fixture card with a
-  clean feed** (stats from 10', 0% of 45' checkpoints lost). So this is no
-  longer explainable as feed lateness or quiet football — on the best-data day
-  in a fortnight the rule fired twice. Both fired signals then LOST (Mainz 0-0,
-  Tottenham 0-2), neither taken. Diagnose against the gate census, not by
-  loosening thresholds: 08-29 rejections were 67% "volume AND momentum short",
-  22% "price outside band", 11% "volume short only" — and separately 35
-  checkpoints died on the strong-evidence gate. Settle the strong-gate item
-  above FIRST; it is the most likely single cause.
-  Original note follows. Three of the last four
-  days produced nothing (08-19, 08-21, 08-22); the last three days ran 2 signals
-  from 301 checkpoints (0.7%) against a lifetime 2.7%. Some of that is the
-  2026-08-21/22 tightening correctly removing fake-momentum signals, some is
-  quiet football, and with n=15 lifetime signals the two cannot yet be
-  separated. `python signalcheck.py --print` prints the per-day table; a one-shot
-  task `InplaySignalCheck` Telegrams it on Mon 24 Aug and self-deletes.
-
-  **If still dry, diagnose before touching anything.** Split blocked checkpoints
-  into (a) feed lateness - no usable momentum baseline - versus (b) genuinely
-  failing the metric bars. If (a) dominates the fix is data-side (poll stats
-  earlier, carry longer, revisit MIN_WINDOW); if (b) dominates it is the
-  thresholds, and those must NOT be loosened on a handful of days - see the
-  Phase 1b protocol above and the placebo overfit that preceded it.
-
-## Medium
+- [x] **DROPPED 2026-09-21: "is the signal drought real?"** Alf's call. The
+  entry said "clearly YES and getting worse", which stopped being true: 2026-09-20
+  produced 10 signals across 5 fixtures and 3 bets, and 2026-09-19 produced 3
+  signals and a bet. Whatever it was measuring has been overtaken by the
+  conviction reblend and the edge tolerance. Re-measure from scratch if the
+  question returns; do not trust the old entry.
 
 - [ ] **"1b" — evaluate every poll once eligible, not only at 5-min checkpoints.**
   Peak dominance often falls between checkpoints (Cercle Brugge peaked at 33'–43').

@@ -721,3 +721,23 @@ def test_the_alert_context_survives_a_restart():
     fresh.load()
     assert fresh.last_alert.get("1563177", {}).get("label") == "Wolves 0-0 West Brom"
     assert fresh.last_alert["1563177"]["side"] == "home"
+
+
+def test_data_losses_are_counted_not_just_survived():
+    """2026-09-19/20: three times in a week the answer to "why did nothing
+    fire?" was a silent data loss nobody counted - an API timeout that broke a
+    momentum window (Aris, 21 shots to 2, lost cp60 and cp65), a fixture the
+    feed never described (Fenerbahce, vol 0/0 for ninety minutes), and a bulk
+    odds outage that blinded every watched fixture at once."""
+    mon = engine.Monitor(None, None, set())
+    assert set(mon.lost) == {"no_window", "no_stats", "no_price", "feed_fail"}
+    assert all(v == 0 for v in mon.lost.values())
+
+
+def test_the_loss_line_is_silent_when_nothing_was_lost():
+    mon = engine.Monitor(None, None, set())
+    lost = ", ".join("%s %d" % (k, v) for k, v in sorted(mon.lost.items()) if v)
+    assert lost == "", "a clean poll must not print a losses line"
+    mon.lost["no_window"] = 3
+    lost = ", ".join("%s %d" % (k, v) for k, v in sorted(mon.lost.items()) if v)
+    assert lost == "no_window 3"

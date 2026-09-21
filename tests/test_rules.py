@@ -196,7 +196,12 @@ def test_time_factor_symmetric_when_pivot_60():
 def test_conviction_scales_by_time_factor():
     fav = {"xg": 1.6, "shots": 18, "sot": 6, "box": 9}
     opp = {"xg": 0.2, "shots": 2, "sot": 0, "box": 1}
-    ev = rules.evaluate({}, "t", 50, fav, opp, fav_goals=0)
+    # a real window is required: an approx reading is capped below the firing
+    # floor (2026-09-20), so it would no longer equal the raw blend
+    hist = {"t": [rules.Snapshot(25, {"xg": 0.2, "shots": 3, "sot": 1, "box": 1},
+                                 {"xg": 0.1, "shots": 1, "sot": 0, "box": 0}, 0)]}
+    ev = rules.evaluate(hist, "t", 50, fav, opp, fav_goals=0)
+    assert not ev.approx
     base = 0.40 * ev.s_vol + 0.60 * ev.s_mom   # dominance dropped 2026-09-20
     # time factor is off by default, so conviction IS the evidence blend
     assert ev.time_mult == 1.0
@@ -342,3 +347,29 @@ def test_a_fixture_with_one_metric_or_none_can_never_pass():
     for n in (0, 1):
         need, strong = rules.rule_thresholds(n)
         assert strong > n, "n=%d must be unreachable - too little to judge" % n
+
+
+def test_a_fabricated_momentum_window_cannot_produce_a_confident_score():
+    """2026-09-20: Frosinone 2-0 Como scored conviction 80 on vol 0/4 mom 0/4
+    because with approx set, s_mom is whole-match totals wearing a momentum
+    label - and momentum is 60% of the blend. It cannot cross the firing floor
+    or earn the strong-evidence bonus, both of which it did."""
+    fav = {"xg": 2.4, "shots": 24, "sot": 9, "box": 15}
+    opp = {"xg": 0.1, "shots": 1, "sot": 0, "box": 1}
+    ev = rules.evaluate({}, "t", 60, fav, opp, fav_goals=0)   # no history -> approx
+    assert ev.approx, "this fixture must have no momentum window"
+    assert ev.conv < config.CONV_FIRE_MIN, (
+        "approx conviction %.1f reached the firing floor" % ev.conv)
+    assert ev.conv < config.WINP_STRONG_FROM, "approx must not earn the bonus"
+
+
+def test_the_approx_cap_does_not_touch_a_real_window():
+    # a genuine reading must be free to score as high as the evidence warrants
+    fav = {"xg": 2.4, "shots": 24, "sot": 9, "box": 15}
+    opp = {"xg": 0.1, "shots": 1, "sot": 0, "box": 1}
+    # the window band is [minute-WINDOW, minute-MIN_WINDOW] = [30, 40] at 60'
+    hist = {"t": [rules.Snapshot(32, {"xg": 0.3, "shots": 4, "sot": 1, "box": 2},
+                                 {"xg": 0.05, "shots": 1, "sot": 0, "box": 0}, 0)]}
+    ev = rules.evaluate(hist, "t", 60, fav, opp, fav_goals=0)
+    assert not ev.approx
+    assert ev.conv > config.CONV_FIRE_MIN, "a real window must not be capped"

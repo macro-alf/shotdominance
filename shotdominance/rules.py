@@ -425,6 +425,25 @@ def evaluate(history, fid, minute, fav, opp, fav_goals, opp_goals=None):
     base_conv = 0.40 * score(vol_r) + 0.60 * score(mom_r)
     tmult = time_factor(minute)
     conv = max(0.0, min(100.0, base_conv * tmult))
+
+    # A FABRICATED MOMENTUM WINDOW MUST NOT PRODUCE A CONFIDENT SCORE.
+    # When approx is set, window_delta handed back the WHOLE MATCH in place of
+    # the trailing window, so s_mom is cumulative totals wearing a momentum
+    # label - and momentum is now 60% of the blend. Frosinone 2-0 Como scored 80
+    # on vol 0/4 mom 0/4 (2026-09-20), two goals down with nothing realised.
+    #
+    # This is NOT cosmetic. min_price() takes conviction, and conviction above
+    # WINP_STRONG_FROM adds the strong-evidence bonus, which LOWERS the price
+    # demanded. FK Jablonec 0-1 Zlin the same day, as its window repaired:
+    #     62'  conv 61 fabricated  P 51.3%  required 1.98  (quoted 1.85: 13 short)
+    #     66'  conv real           P 48.0%  required 2.12  (quoted 1.80: 32 short)
+    # At 62' it read as inside the 0.20 tolerance and would have fired.
+    #
+    # Capped below CONV_FIRE_MIN so it can neither cross the firing floor nor
+    # earn the bonus, while preserving the ordering the board shows. The score
+    # is still reported, because "interesting but unjudgeable" is information.
+    if approx:
+        conv = min(conv, config.CONV_FIRE_MIN - 0.1)
     return Evaluation(
         ok=ok, basis=basis, approx=approx, conv=round(conv, 1),
         vol_met=vol_met, mom_met=mom_met, n_present=n_present, win_min=win_min,
