@@ -10,77 +10,75 @@ win but dominating the shot count, it sends a Telegram alert with a stake
 suggestion. **It never places bets.** It alerts, and records bets you tell it you
 placed.
 
-## The rule set (current, as of 2026-08-13)
+## The rule set (current, as of 2026-09-21)
 
 Eligibility
-- Competition in the 24-competition list (`config.LEAGUES`), chosen for stats
-  completeness (2026-08-16, `logs/league_coverage.csv`): Tier 1 = 100% xG + core
-  shot stats (16 leagues + UEFA CL/EL/ECL); Tier 2 = 100% core, intermittent xG
-  (Bundesliga, Ligue 1, Jupiler, Allsvenskan, Czech). xG-less leagues (Ligue 2,
-  Spain Segunda) were dropped. All ids pinned in `config.PINNED_IDS`.
-- Pre-match favourite decimal odds **1.30–2.25**
-- Favourite **not currently winning**
-- Checkpoints at minutes **45, 50, 55, 60, 65, 70, 75** — each evaluated once
+- Competition in the 25-competition list (`config.LEAGUES`), all ids pinned in
+  `config.PINNED_IDS`.
+- Pre-match favourite decimal odds **1.01-3.00** (`MIN_ODDS`/`MAX_ODDS`). Note
+  this gates the PRE-MATCH price only - there is no live ceiling, a known gap.
+- Favourite **not currently winning**.
+- Checkpoints at **45, 50, 55, 60, 65, 70, 75**, grace 4 minutes. `due_checkpoint`
+  retires every reached-but-lower checkpoint, so only the latest can fire.
 
-Metrics (4): `xg`, `shots` (total), `sot` (on target), `box` (shots inside box)
+Metrics (4): `xg`, `shots`, `sot`, `box`. Live coverage is mostly THREE - 86% of
+September rows carried 3 metrics, 6.9% carried 4, 2.2% carried 2.
 
-Baseline thresholds **at minute 45**: xG 0.70 | shots 10 | on target 3 | insidebox 5
-Volume threshold at minute *t* scales linearly: `base * t / 45`
-Momentum threshold is constant: `base * 30 / 45` (a 30-minute trailing window)
+Baseline thresholds at minute 45: xG 0.70 | shots 10 | sot 3 | box 5
+- volume bar grows with `vol_scale(minute)` and is multiplied by
+  `goals_needed = max(fav_goals+1, opp_goals)`;
+- momentum bar scales with the window actually measured (30 min, floor 20).
 
-A metric counts as **realised** only if BOTH:
-1. value ≥ its threshold, AND
-2. opponent's value on that same metric ≤ **50%** of ours (`DOM_RATIO`)
+A metric is **realised** only if value >= threshold AND opponent <= 50% of ours.
 
-The requirement is **≥2 of the metrics that have data**, not always "of 4": when
-xG is absent for a match (common — see known-issue #1) the rule becomes **2 of
-3** and the console/alert print the true denominator (`vol=2/3`).
+**How many metrics are demanded scales with how many exist** (`rule_thresholds`,
+measured 2026-09-20 on 34,734 backtest rows against a 31.9% base):
+
+    n=4   need 2, strong 3    5.7% pass, 45.7% win   <- the calibration
+    n=3   need 2, strong 2    4.7% pass, 45.6% win   <- reproduces it
+    n=2   need 1, strong 2    4.1% pass, 44.5% win
+    n<=1  unreachable - too little to judge
 
 Signal logic
-- **Favourite has not scored** (0-0, 0-1, …): need ≥2 on volume **AND**
-  ≥2 on momentum. An incomplete momentum window (`~`) blocks the signal.
-- **Favourite has scored and is level/behind** (1-1, 2-2, 1-2): **EITHER**
-  ≥2 of 4 on momentum, **OR** ≥2 of 4 on cumulative-from-kickoff measured
-  against a `(fav_goals + 1)×` threshold. Note this is *looser* than the 0-0
-  case — a known and deliberate consequence of "either/or".
-- Price / market (depends on the scoreline):
-  - **Favourite level** (0-0, 1-1, …): back it to **win**; the live
-    favourite-to-win price must be **1.75–4.00**.
-  - **Favourite behind** (0-1, 1-2, …): the tradeable market becomes the
-    **double chance** — favourite win *or* draw (**1X** for a home favourite,
-    **X2** for an away one). That double-chance price must be **1.75–4.00** (same
-    band). Taken live from the feed when offered, otherwise **derived** by
-    combining the two winning legs: `dc = 1 / (1/fav_win + 1/draw)` (1X from
-    Home+Draw, X2 from Away+Draw). This carries the same 1x2 margin as the
-    outright prices, so it reproduces the feed's own live DC to ~1% (verified
-    against `/odds/live`); it is flagged "derived odds" in the alert. If the
-    Draw price is absent the condition is skipped rather than guessed.
-  - If no usable live price is available the condition is **skipped**, not
-    failed, and the alert still fires. Live odds flicker in and out
-    (blocked/suspended); the **last live price for a fixture is carried forward
-    for up to `PRICE_CARRY_TTL` (180s)** so a momentary gap at a checkpoint does
-    not drop the price.
-  - Sizing uses whichever price applies, and the blotter records the `market`
-    (`win` / `1X` / `X2`) so settlement grades it correctly: a **win** bet needs
-    an outright win, a **double chance** needs the favourite merely to avoid
-    defeat (a draw settles it as a win).
+- **Favourite has not scored**: >= need on volume AND on momentum.
+- **Favourite has scored and is level/behind**: momentum OR cumulative (the
+  volume bar already carries the goals_needed multiplier). Momentum-only was
+  measured and REJECTED 2026-09-20 - see TODO.
+- The STRONG gate then requires the better axis to reach `strong` and the other
+  to reach `need`.
+- An incomplete momentum window (`~`, `approx`) blocks the signal, and since
+  2026-09-21 also **caps conviction below the firing floor** - with no window,
+  `s_mom` is whole-match totals wearing a momentum label and 60% of the score is
+  fabricated.
 
-Conviction score (0–100): `50 × (0.6·mean + 0.4·min)` of the ratio-to-threshold
-vector, capped at 2×, combined 0.55 volume / 0.30 momentum / 0.15 dominance.
-50 = everything exactly at threshold. 100 = everything at double.
+Conviction = **0.40 x volume + 0.60 x momentum**. Dominance carries zero weight
+(measured 2026-09-20: it separated winners by +2.1pp and is already enforced
+twice elsewhere). Floor to fire: **60**. Stake ladder 1000 at 60 -> 2000 at 100,
+flat in price; Kelly is reported but not binding.
 
-Firing policy (conviction gate): an eligible signal fires only if conviction is
-**≥ `CONV_FIRE_MIN` (50)**, and a live signal **re-fires only when its conviction
-exceeds the highest already alerted** for that fixture — so a deteriorating
-situation is not repeated. Alerts still stop entirely once you reply "bet done".
+Price gate - the binding constraint in practice
+- `min_price(state, minute, conv, pm)` = break-even on `COMMISSION` (3%),
+  floored at **MIN_BACKABLE_ODDS 1.80**, with `EDGE_MARGIN` 0.
+- P(win) is fitted on 2020-23 rule_ok rows with penalties stripped, refit
+  2026-09-20 to the new conviction scale: level 0.6101/-0.009906, behind
+  0.5978/-0.008342, +0.074 for conviction >= 70, capped at **0.75** (above that
+  the model over-predicted by ~10pp).
+- **Pre-match price is an input** and matters more than the evidence does:
+  +13.9pp for pm<1.35 down to -6.8pp for pm>2.10, interpolated in ln(price)
+  between bucket centroids and clamped.
+- **EDGE_TOLERANCE 0.20**: a quote within 0.20 of the requirement FIRES, with an
+  unmissable warning naming the shortfall. This lowers the effective floor to
+  1.60. With no quote at all the signal fires unsized - confirmed intended.
 
-Sizing: base = `1000 / (price − 1)` (target win €1,000), multiplied by
-`1.0 + (MULT_MAX−1)·(conv−50)/(85−50)` clamped to [0.5, 2.0], then capped by
-0.65-Kelly and a 10%-of-bankroll per-bet cap. Bankroll €20,000, commission 3%.
+Market by scoreline: level -> back to **win**; behind -> the **double chance**
+(1X home / X2 away), taken live or derived as `1/(1/fav + 1/draw)`. The blotter
+records `market` so settlement grades it correctly.
 
-Alerts repeat at every checkpoint while the signal holds, until you reply
-**"bet done" as a reply to that specific Telegram message**. The bot then asks
-for stake and price, writes `blotter.csv`, and settles at full time.
+Adaptive polling is a **quota rescue, not the default**: skipping is off until
+65% of the day's allowance is used (`SLOW_POLL_FROM_QUOTA`), then <30 conviction
+polls every 4th cycle and <45 every 2nd. A checkpoint window is never skipped.
+
+`QUOTE_SANITY` is **OFF** - see the post-mortem at `config.QUOTE_CONFIRM`.
 
 ## Architecture
 
