@@ -78,7 +78,24 @@ Adaptive polling is a **quota rescue, not the default**: skipping is off until
 65% of the day's allowance is used (`SLOW_POLL_FROM_QUOTA`), then <30 conviction
 polls every 4th cycle and <45 every 2nd. A checkpoint window is never skipped.
 
-`QUOTE_SANITY` is **OFF** - see the post-mortem at `config.QUOTE_CONFIRM`.
+**Quote plausibility** (`QUOTE_SANITY`, ON since 2026-09-21 as v2): a live quote
+below `QUOTE_MIN_RATIO` (0.50) of the PRE-MATCH price is treated as no price, as
+is anything <= 1.01. One-sided by design - measured on 39,816 live observations,
+the low tail of live/pre-match is tight (p0.1 0.567 level, 0.535 behind) while
+the high tail reaches 28x legitimately, so a drift is never penalised. Replayed
+over five weeks it rejects 15 of 39,816 quotes, four of which are decimal prices
+below 1.00. v1 judged MOVEMENT against the last quote and was disabled the day it
+shipped - a goal moves a price more than any movement band allows, and a bad
+first sighting became the reference and was defended against the truth.
+
+**A missing price does not block a signal.** It fires unsized (confirmed
+intended, 2026-09-19). The `PRICE_CARRY_TTL` (180s) carry covers momentary gaps
+but not a half-time suspension, which is ~15 minutes.
+
+**Known and unfixed: the feed's scoreline flickers.** 14.9% of fixture-days
+contain at least one poll where the score goes BACKWARDS. While that is live it
+changes `goals_needed`, the state (level vs behind - the market AND the
+win-probability curve) and the price returned. See TODO.
 
 ## Architecture
 
