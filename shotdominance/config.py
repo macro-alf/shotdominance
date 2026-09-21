@@ -535,31 +535,34 @@ REQ_PER_MIN = _f("REQ_PER_MIN", 100)
 # not drop the price at the decisive checkpoint.
 PRICE_CARRY_TTL = _f("PRICE_CARRY_TTL", 180.0)
 
-# QUOTE SANITY. Caught live 2026-09-19: Sunderland 0-0 AZ was quoted 2.20, the
-# odds feed dropped for two polls, and it came back at 1.14 with the score and
-# the evidence unchanged. A goalless home side does not halve in price at 65'
-# without a goal - that was a different market landing in the win slot (the
-# known live-price mapping residual). It was harmless only because it erred
-# SHORT and the gate refused it; the same fault erring LONG would have sized a
-# bet at a price that does not exist.
+# QUOTE PLAUSIBILITY, v2 (2026-09-21). v1 judged MOVEMENT against the last
+# quote and was disabled the day it shipped: a goal legitimately moves a price
+# far more than any movement band allows, and with no anchor a bad first
+# sighting became the reference and was then defended against the truth
+# (Gostepe 1-1 Rizespor: 1.22 accepted, the genuine 3.40 rejected, a signal that
+# should have fired sized at 3.40 fired at stake 0).
 #
-# It also corrupted the measurement: the 1.14 was written into blocked.csv as a
-# genuine refused price and settled with a counterfactual P&L.
+# v2 judges the LEVEL against the PRE-MATCH price, which needs no history and
+# cannot be poisoned. Measured on 39,816 live (pm, price) observations from five
+# weeks of logs - the ratio live/pre-match, for fixtures where the favourite is
+# not leading:
 #
-# A quote is rejected when it moves by more than QUOTE_JUMP_MAX times the last
-# good price within QUOTE_JUMP_WINDOW seconds. Rejected quotes are treated as
-# NO PRICE - the honest state - rather than carried or believed.
-# DISABLED 2026-09-20, the same day it shipped. See the post-mortem below; turn
-# it back on with QUOTE_SANITY=1 only once the rebuild described there is done.
-QUOTE_SANITY = _i("QUOTE_SANITY", 0) != 0
-QUOTE_JUMP_MAX = _f("QUOTE_JUMP_MAX", 0.40)     # +/-40% between good readings
-QUOTE_JUMP_WINDOW = _f("QUOTE_JUMP_WINDOW", 600.0)
-# How many consecutive polls an out-of-band level must hold before it is taken
-# as a real move rather than a mis-map. Added 2026-09-20 within hours of the
-# band going live: Energie Cottbus v St. Pauli drifted 2.30 -> 5.00 and stayed,
-# and the first version rejected it forever because a rejected quote never
-# refreshed the reference. A mis-map flickers; a real move holds.
-QUOTE_CONFIRM = _i("QUOTE_CONFIRM", 2)
+#     state      n        p0.1   p0.25   p0.5    p1     median   p99
+#     level    25,970    0.567   0.667   0.718   0.792   ~1.2    ~13
+#     behind   13,846    0.535   0.565   0.596   0.684   ~1.1    ~28
+#
+# The LOW tail is tight and stable; the HIGH tail runs to 28x legitimately on a
+# dying match. So the guard is ONE-SIDED: it catches implausibly SHORT quotes
+# and never penalises a drift. That also matches the fault it targets - a
+# double-chance price landing in the win slot is always SHORTER than the truth.
+#
+# 0.50 sits below the 0.1st percentile of both states. It rejects 15 of 39,816
+# rows (0.04%) and catches Gostepe's 0.494. Tighter is not available: the
+# legitimate distribution reaches down to ~0.55, so 0.60 would discard real
+# prices. A guard that only catches the extreme tail is the honest limit of
+# what this data supports.
+QUOTE_SANITY = _i("QUOTE_SANITY", 1) != 0
+QUOTE_MIN_RATIO = _f("QUOTE_MIN_RATIO", 0.50)
 
 # POST-MORTEM, 2026-09-20. The band was written to catch Sunderland's 1.14
 # mis-map and was live for eight hours. It did more harm than the fault it

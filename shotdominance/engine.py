@@ -57,8 +57,6 @@ class Monitor:
         self.polls = 0           # polls this run, for the periodic quota check
         self.quota_warned = False
         self.quota_frac = 0.0    # day's allowance used, gates SLOW_POLL
-        self.good_price = {}     # fid -> (ts, price) last quote that passed sanity
-        self.odd_price = {}      # fid -> (price, consecutive sightings) out of band
         self.poll_seconds = config.POLL_SECONDS   # monitor.py sleeps by this
 
     # --- persistence --------------------------------------------------------
@@ -194,50 +192,39 @@ class Monitor:
               % (ctx["label"], price, sz["stake"], ctx["conv"]), flush=True)
 
     # --- quote sanity -------------------------------------------------------
-    def _sane_price(self, fid, price, label=""):
-        """Reject a quote that cannot be a real move on the last good one.
+    def _sane_price(self, fid, price, label="", pm=None):
+        """Reject a live quote that is implausibly SHORT for the pre-match price.
 
-        Sunderland 0-0 AZ (2026-09-19) went 2.20 -> feed gap -> 1.14 with the
-        score and the evidence unchanged: a different market landing in the win
-        slot. A rejected quote becomes None - the honest "no price" state.
+        v2. The previous version compared each quote to the last one, which a
+        goal breaks and which let a bad first sighting become the reference.
+        This compares the LEVEL to the pre-match price: no history, nothing to
+        poison, and it works on the first quote a fixture ever shows.
 
-        THE DISCRIMINATOR IS TRANSIENT vs SUSTAINED, not size. Energie Cottbus
-        v St. Pauli (2026-09-20) drifted 2.30 -> 4.33 -> 4.75 -> 5.00 and stayed
-        there; the first version rejected the jump and then, because a rejected
-        quote never became the new reference, rejected every later poll too and
-        left the fixture permanently unpriced. A mis-map flickers; a real move
-        holds. So an out-of-band level that repeats QUOTE_CONFIRM times in a row
-        is accepted as the market having genuinely moved.
-
-        Only movement is tested, never the level: a first sighting at 18.31 on
-        a dying match is real information and passes.
+        One-sided by design - see the measured table at config.QUOTE_MIN_RATIO.
+        A drift to 20x on a dying match is real information; a quote at half the
+        pre-match price on a side that is not winning is not.
         """
-        if price is None:
-            return None
-        if not config.QUOTE_SANITY:
-            self.good_price[fid] = (self._now, price)
+        if price is None or not config.QUOTE_SANITY:
             return price
-        last = self.good_price.get(fid)
-        if last and (self._now - last[0]) <= config.QUOTE_JUMP_WINDOW and last[1] > 0:
-            move = abs(price - last[1]) / last[1]
-            if move > config.QUOTE_JUMP_MAX:
-                seen, n = self.odd_price.get(fid, (None, 0))
-                # "the same level" allows the normal jitter of a live market
-                same = seen is not None and abs(price - seen) <= 0.10 * seen
-                n = n + 1 if same else 1
-                self.odd_price[fid] = (price, n)
-                if n < config.QUOTE_CONFIRM:
-                    print("   ! %s: quote %.2f held back - %.0f%% from %.2f seen "
-                          "%.0fs ago (max %.0f%%), %d of %d confirmations"
-                          % (label or fid, price, 100 * move, last[1],
-                             self._now - last[0], 100 * config.QUOTE_JUMP_MAX,
-                             n, config.QUOTE_CONFIRM), flush=True)
-                    return None
-                print("   ! %s: quote %.2f ACCEPTED after %d consistent polls - "
-                      "the market has moved, not mis-mapped"
-                      % (label or fid, price, n), flush=True)
-        self.odd_price.pop(fid, None)
-        self.good_price[fid] = (self._now, price)
+        # A decimal price at or below 1.00 pays less than the stake back and
+        # cannot exist. Four turned up in five weeks of logs (0.98, 0.98, 0.99,
+        # 0.99) and were only caught by the ratio test because those fixtures
+        # happened to be ~2.00 pre-match; on a 1.50 favourite 0.98 would be a
+        # ratio of 0.65 and would have passed. Absolute, no calibration needed.
+        if price <= 1.01:
+            print("   ! %s: quote %.2f rejected - a decimal price at or below "
+                  "1.01 cannot exist. Treated as NO PRICE."
+                  % (label or fid, price), flush=True)
+            return None
+        if not pm or pm <= 0:
+            return price
+        if price < config.QUOTE_MIN_RATIO * pm:
+            print("   ! %s: quote %.2f rejected - %.2f of a %.2f pre-match "
+                  "(floor %.2f). Treated as NO PRICE; almost certainly another "
+                  "market in the win slot."
+                  % (label or fid, price, price / pm, pm,
+                     config.QUOTE_MIN_RATIO * pm), flush=True)
+            return None
         return price
 
     # --- blocked-signal ledger ----------------------------------------------
@@ -838,7 +825,7 @@ class Monitor:
             if cached and (self._now - cached[0]) <= config.PRICE_CARRY_TTL:
                 fx_prices = cached[1]      # carry the last live odds over the gap
         pinfo = apifootball.signal_price(fx_prices, side, behind)
-        price = self._sane_price(fid, pinfo["price"], label)
+        price = self._sane_price(fid, pinfo["price"], label, pm)
         if price is None:
             self.lost["no_price"] += 1
         if price is None:

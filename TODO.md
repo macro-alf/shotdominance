@@ -117,6 +117,32 @@ for context. Last updated 2026-08-29.
 
 ## High value
 
+- [ ] **MON 21 SEP: THE FEED'S SCORELINE FLICKERS - 15% OF FIXTURES SEE A PHANTOM
+  GOAL.** Found while validating the quote rebuild. Measured over 85,697 rows /
+  1,094 fixture-days: 177 rows (0.21%) report a score LOWER than the previous
+  poll, and **163 of 1,094 fixture-days (14.9%) contain at least one**.
+
+      Estoril v Casa Pia 2026-09-20:  20' 0-0 -> 22' 0-1 -> 24' 0-0
+                                      76' 1-1 -> 78' 1-2 -> 79' 1-1 -> 90' 1-2
+      CSKA Sofia v OFI    29': 0-1 -> 0-0      Valencia v Barcelona 13': 0-2 -> 0-1
+
+  **This is not cosmetic.** While a phantom goal is live it changes
+  `goals_needed` (so every volume threshold), the state (level vs behind, so
+  which market is quoted AND which win-probability curve is used), and the
+  price actually returned by the odds feed. It almost certainly explains some
+  of the "mis-mapped" quotes blamed on the price feed - the 1.20 and 1.12 on
+  Estoril coincide exactly with its phantom scorelines.
+
+  **It also corrected the record.** The v1 quote-band post-mortem claimed 96
+  "real prices discarded"; an unknown share of those coincided with phantom
+  goals and were probably correct catches. Do not quote the 96 as if it were
+  all false positives.
+
+  **Possible fix:** ignore a scoreline that goes backwards until it is confirmed
+  by a second consecutive poll, the same discipline the quote guard uses. Cheap,
+  and it protects thresholds, market selection and state together. Measure first:
+  how many of the 177 self-correct within one poll?
+
 - [ ] **A LIVE PRICE CEILING - BLOCKED ON DATA, NOW BEING COLLECTED (2026-09-21).**
   Twelve sightings in a week of a live quote far above the model's requirement on
   a hopeless position: Benfica 21.00 v need 2.56 (two down, 69'), Galatasaray
@@ -146,8 +172,14 @@ for context. Last updated 2026-08-29.
   can be set from the answer instead of guessed.
   **Do not set a ceiling before that query returns a number.**
 
-- [ ] **MON 21 SEP: REBUILD THE QUOTE PLAUSIBILITY CHECK, ANCHORED ON PRE-MATCH
-  PRICE AND SCORELINE.** Alf asked for this after the first attempt was disabled
+- [x] **DONE 2026-09-21: QUOTE PLAUSIBILITY v2, ANCHORED ON THE PRE-MATCH PRICE.**
+  One-sided floor at `QUOTE_MIN_RATIO` 0.50 of pre-match, plus an absolute
+  reject at <=1.01. Measured on 39,816 live (pm, price) observations; replayed
+  over five weeks of logs it rejects 15 quotes (0.038%), four of which are
+  decimal prices below 1.00. Scoreline was NOT needed - state is already in
+  the measured envelope. Acceptance test passes: Gostepe 1.22 rejected, the
+  genuine 3.40 accepted, every goal-driven move accepted.
+  ~~Original entry below.~~ Alf asked for this after the first attempt was disabled
   the day it shipped (`581d39c`). The band is OFF (`QUOTE_SANITY=0`); the logic
   and its tests are retained behind the flag.
 

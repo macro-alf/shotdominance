@@ -616,96 +616,62 @@ def test_a_price_at_or_above_the_requirement_carries_no_short_warning():
     assert "SHORT OF THE MINIMUM" not in txt
 
 
-def _quote_monitor(monkeypatch=None):
-    """A monitor with the quote band FORCED ON. It ships disabled (see the
-    post-mortem at config.QUOTE_CONFIRM) but the logic is kept for the rebuild,
-    so these tests still pin its behaviour."""
+def _quote_monitor():
     mon = engine.Monitor(None, None, set())
     mon._now = 1000.0
     config.QUOTE_SANITY = True
     return mon
 
 
-def test_the_quote_band_ships_disabled():
-    """2026-09-20: live for eight hours, discarded 96 quotes across 68 fixtures
-    because A GOAL LEGITIMATELY MOVES A PRICE BY MORE THAN 40% and the band
-    cannot see the scoreline. It also inverted on Gostepe - accepted a
-    double-chance quote of 1.22 as the reference, then rejected the genuine 3.40
-    and fired a signal unsized that should have been sized. Off until the
-    rebuild anchors plausibility on pre-match price and scoreline."""
-    import importlib
-    from shotdominance import config as fresh
-    importlib.reload(fresh)
-    assert fresh.QUOTE_SANITY is False, "the band must not ship enabled again"
-
-
-def test_the_sunderland_misquote_is_rejected():
-    # 2026-09-19: 2.20 -> feed gap -> 1.14, score and evidence unchanged. A
-    # different market landing in the win slot, not a price move.
+def test_a_quote_at_half_the_prematch_price_is_rejected():
+    """THE ACCEPTANCE TEST from the TODO. Gostepe 1-1 Rizespor (2026-09-20) was
+    first seen at 1.22 on a 2.47 pre-match - a double-chance price in the win
+    slot. v1 accepted it because it had no reference, then rejected the genuine
+    3.40 for disagreeing with it, and a signal that should have fired sized at
+    3.40 fired at stake 0."""
     mon = _quote_monitor()
-    assert mon._sane_price("f", 2.20) == 2.20
-    mon._now += 120
-    assert mon._sane_price("f", 1.14) is None, "a 48% jump is not a price move"
+    assert mon._sane_price("f", 1.22, pm=2.47) is None
+    assert mon._sane_price("f", 3.40, pm=2.47) == 3.40, "the real price must pass"
 
 
-def test_a_real_price_drift_still_passes():
-    # Athletic Club 2026-09-19 moved 1.95 -> 3.00 over 23 minutes in steps; each
-    # step must pass or the gate goes blind on an honest market.
+def test_the_goal_driven_moves_v1_wrongly_discarded_are_accepted():
+    """v1's fatal flaw: a goal legitimately moves a price far more than any
+    movement band allows. v2 never looks at movement, so all of these pass
+    whatever they did between polls."""
     mon = _quote_monitor()
-    for p in (1.95, 2.10, 2.40, 2.75, 3.00):
-        mon._now += 300
-        assert mon._sane_price("f", p) == p, "rejected a genuine drift to %.2f" % p
+    for price, pm in ((1.67, 1.67), (10.00, 1.67), (19.00, 1.67), (5.00, 1.65)):
+        assert mon._sane_price("f", price, pm=pm) == price,             "%.2f on a %.2f pre-match must pass" % (price, pm)
 
 
-def test_a_long_price_on_a_dying_match_is_not_rejected_for_its_level():
-    # only MOVEMENT is tested. A first sighting at 18.00 is real information.
+def test_a_long_drift_on_a_dying_match_is_never_penalised():
+    # the high tail reaches 28x legitimately; the guard is one-sided
     mon = _quote_monitor()
-    assert mon._sane_price("f", 18.31) == 18.31
+    for price in (8.00, 18.31, 26.00, 36.71):
+        assert mon._sane_price("f", price, pm=1.30) == price
 
 
-def test_a_stale_reference_does_not_veto_a_later_quote():
+def test_the_guard_needs_no_history_and_cannot_be_poisoned():
+    """v1 adopted a bad first sighting as its reference and then defended it.
+    v2 holds no per-fixture state at all, so the order quotes arrive in cannot
+    change the verdict."""
     mon = _quote_monitor()
-    mon._sane_price("f", 2.20)
-    mon._now += config.QUOTE_JUMP_WINDOW + 1
-    assert mon._sane_price("f", 1.14) == 1.14, "reference older than the window"
+    assert mon._sane_price("f", 1.22, pm=2.47) is None
+    assert mon._sane_price("f", 1.22, pm=2.47) is None, "still rejected, whatever came before"
+    other = _quote_monitor()
+    assert other._sane_price("f", 3.40, pm=2.47) == 3.40
+    assert other._sane_price("f", 1.22, pm=2.47) is None
 
 
-def test_a_rejected_quote_does_not_become_the_new_reference():
+def test_the_floor_sits_below_the_measured_distribution():
+    # level p0.1 is 0.567 and behind p0.1 is 0.535 over 39,816 observations;
+    # 0.50 rejects 15 of them. Tighter would discard real prices.
+    assert config.QUOTE_MIN_RATIO < 0.535
+
+
+def test_a_missing_prematch_price_disables_the_check_rather_than_guessing():
     mon = _quote_monitor()
-    mon._sane_price("f", 2.20)
-    mon._now += 60
-    assert mon._sane_price("f", 1.14) is None
-    mon._now += 60
-    assert mon._sane_price("f", 2.30) == 2.30, "2.20 must still be the reference"
-
-
-def test_a_sustained_move_is_accepted_once_it_holds():
-    """Energie Cottbus v St. Pauli, 2026-09-20: 2.30 -> 4.33 -> 4.75 -> 5.00 and
-    it stayed there. The first version of the band rejected the jump and then
-    every later poll, because a rejected quote never refreshed the reference -
-    the fixture was left permanently unpriced. A mis-map flickers; a real move
-    holds."""
-    mon = _quote_monitor()
-    assert mon._sane_price("f", 2.30) == 2.30
-    mon._now += 80
-    assert mon._sane_price("f", 4.33) is None, "first sighting is held back"
-    mon._now += 80
-    assert mon._sane_price("f", 4.75) == 4.75, "it held - accept the real move"
-    mon._now += 80
-    assert mon._sane_price("f", 5.00) == 5.00, "reference has moved with it"
-
-
-def test_a_flickering_misquote_is_still_refused():
-    # the Sunderland shape: one bad print, then back to the real level.
-    mon = _quote_monitor()
-    mon._sane_price("f", 2.20)
-    mon._now += 60
-    assert mon._sane_price("f", 1.14) is None
-    mon._now += 60
-    assert mon._sane_price("f", 2.25) == 2.25, "the real price returns untouched"
-    mon._now += 60
-    assert mon._sane_price("f", 1.14) is None, "and the bad one is refused again"
-
+    assert mon._sane_price("f", 1.22, pm=None) == 1.22
+    assert mon._sane_price("f", 1.22, pm=0) == 1.22
 
 def test_the_alert_context_survives_a_restart():
     """2026-09-20: the monitor was restarted between the Wolves alert and Alf's
@@ -741,3 +707,15 @@ def test_the_loss_line_is_silent_when_nothing_was_lost():
     mon.lost["no_window"] = 3
     lost = ", ".join("%s %d" % (k, v) for k, v in sorted(mon.lost.items()) if v)
     assert lost == "no_window 3"
+
+
+def test_an_impossible_decimal_price_is_rejected_whatever_the_prematch():
+    """Four quotes below 1.00 turned up in five weeks (0.98, 0.98, 0.99, 0.99).
+    The ratio test only caught them because those fixtures were ~2.00 pre-match;
+    on a 1.50 favourite 0.98 is a ratio of 0.65 and would have passed. A price
+    that pays less than the stake back cannot exist, so it needs no calibration."""
+    mon = _quote_monitor()
+    for bad in (0.98, 0.99, 1.00, 1.01):
+        assert mon._sane_price("f", bad, pm=1.50) is None, "%.2f accepted" % bad
+        assert mon._sane_price("f", bad, pm=None) is None, "%.2f accepted with no pm" % bad
+    assert mon._sane_price("f", 1.02, pm=1.50) == 1.02
