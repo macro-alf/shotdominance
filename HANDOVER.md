@@ -115,6 +115,11 @@ cross-poll state and calls into the leaf modules; nothing calls back.
     daily.py    supervisor: schedule, launch monitor as a child, tee to logs/,
                 detect end of day, run endday.py, sleep the PC
     endday.py   end-of-day report + pasteable digest + Telegram summary
+    sleeper.py  InplaySleep task (23:30 daily, retry 15 min to 02:00): sleeps
+                the PC unless the heartbeat says the supervisor is still
+                working. daily.py only suspends at the end of a day it
+                MONITORED, so a blank card left the machine awake all night -
+                21-24 Sep 2026, four nights running.
     review.py   log analyser — recomputes WHY each metric failed
 
 The console log format is byte-compatible with the old build so `review.py` keeps
