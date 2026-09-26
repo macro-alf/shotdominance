@@ -682,6 +682,11 @@ LEAGUES = [
     # both decent core shots (83%) AND xG (83%) - every other candidate was 0%
     # xG. See the watchlist item in TODO.md: the list is otherwise saturated.
     ("Netherlands", "Eerste Divisie"),
+    # Added 2026-09-26 on Alf's instruction. INTERNATIONAL football - the rule
+    # set has never been backtested on it; the 34,734-row calibration is club
+    # football only. Live stats measured 26-Sep on three completed NL fixtures:
+    # 16 stat types, shots + sot + box, no xG - the same n=3 as the club leagues.
+    ("World", "UEFA Nations League"),
 ]
 
 # Every competition pinned to its current feed id (resolved 2026-08-16) so
@@ -716,4 +721,5 @@ PINNED_IDS = {
     # Caught by test_every_league_is_pinned on 2026-09-13. Id confirmed against
     # a live resolve: "OK Netherlands Eerste Divisie id=89".
     ("Netherlands", "Eerste Divisie"): 89,
+    ("World", "UEFA Nations League"): 5,
 }

@@ -4,10 +4,11 @@ from shotdominance import config
 
 
 def test_watchlist_size_and_uniqueness():
-    # 25 since 2026-08-31: Eerste Divisie added as the only untracked league in
-    # the 454-league sweep with both decent core shots (83%) AND xG (83%).
-    assert len(config.LEAGUES) == 25
-    assert len(set(config.LEAGUES)) == 25            # no duplicates
+    # 25 from 2026-08-31 (Eerste Divisie: the only untracked league in the
+    # 454-league sweep with both decent core shots (83%) AND xG (83%)).
+    # 26 from 2026-09-26: UEFA Nations League, on Alf's instruction.
+    assert len(config.LEAGUES) == 26
+    assert len(set(config.LEAGUES)) == 26            # no duplicates
 
 
 def test_every_league_is_pinned():
