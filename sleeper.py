@@ -21,6 +21,9 @@ HEARTBEAT = os.path.join(HERE, "logs", "heartbeat.txt")
 LOG = os.path.join(HERE, "logs", "sleeper.log")
 STALE_MIN = int(os.getenv("SLEEPER_STALE_MIN", "25"))
 BUSY = ("waiting-for-launch", "planning", "monitoring", "ending")
+# The only hours this is ever allowed to suspend the machine. See in_window().
+NOT_BEFORE = int(os.getenv("SLEEPER_NOT_BEFORE", "23"))
+NOT_AFTER = int(os.getenv("SLEEPER_NOT_AFTER", "3"))
 
 
 def log(msg):
@@ -42,7 +45,28 @@ def read_beat():
         return None, None
 
 
+def in_window(now):
+    """23:00-03:00 only.
+
+    Task Scheduler runs a MISSED trigger window as soon as the machine is next
+    available, so a task whose only action is to power the PC down must never
+    trust that it was called at the intended time. Registered with
+    StartWhenAvailable, the 23:30 window was missed every night while the PC
+    slept and fired ~10 min after the morning wake instead - it suspended the
+    machine on the mornings of 26, 27 and 28-Sep-2026, three days running.
+
+    The task no longer sets StartWhenAvailable, but this guard is the real
+    protection: it holds however the script is invoked.
+    """
+    return now.hour >= NOT_BEFORE or now.hour < NOT_AFTER
+
+
 def main():
+    now = dt.datetime.now()
+    if not in_window(now):
+        log("OUTSIDE the %02d:00-%02d:00 window (%s) - refusing to suspend"
+            % (NOT_BEFORE, NOT_AFTER, now.strftime("%H:%M")))
+        return
     when, state = read_beat()
     if when is None:
         log("no readable heartbeat - nothing is supervising, sleeping")
