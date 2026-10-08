@@ -161,9 +161,8 @@ entry scripts force UTF-8 stdout. ~48 pytest tests.
   `daily.py` logs "first kickoff already passed — starting now" and the early
   fixtures lose their snapshot history. 13:00 is safe for a normal weekday but
   would NOT be for a midweek afternoon card.
-  **`WATCHDOG_ACTIVE_FROM` (10) now conflicts with the weekday start** — see the
-  watchdog item in `TODO.md`; it must become day-aware before the watchdog is
-  revived, or it will restart the monitor at 10:05 and undo the 13:00 schedule.
+  The watchdog window is day-aware since 2026-10-08 (14:00+ Mon-Fri, 10:00+
+  Sat-Sun); if you move the InplayMonitor triggers, move those hours with them.
 - **Secrets** are Windows **User env vars** (`APIFOOTBALL_KEY`,
   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) — never in the repo; the Claude Bash
   tool doesn't inherit them (hydrate from User scope when launching by hand).

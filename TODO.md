@@ -96,6 +96,10 @@ for context. Last updated 2026-08-29.
   The Task Scheduler operational log appears to be DISABLED on this machine —
   enable it, or this stays unprovable.
 
+  **FIXED 2026-10-08:** the window is now day-aware — `ACTIVE_FROM_WEEKDAY` 14
+  (env `WATCHDOG_ACTIVE_FROM_WEEKDAY`), weekends 10 (env `WATCHDOG_ACTIVE_FROM`).
+  It had bitten on 21-24 Sep. The history below is kept for the reasoning.
+
   **NEW CONFLICT, created 2026-08-31 — read before reviving the watchdog.**
   The monitor now starts **13:00 on weekdays, 09:45 at weekends**, but
   `WATCHDOG_ACTIVE_FROM` is a single value of **10**. On a weekday the watchdog

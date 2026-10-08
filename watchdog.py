@@ -45,12 +45,18 @@ STALE_MIN = int(os.getenv("WATCHDOG_STALE_MIN", "25"))
 # Only act inside the window where the supervisor is expected to be up. Outside
 # it the PC is usually asleep and this task is not running anyway.
 #
-# ACTIVE_FROM MUST BE LATER THAN THE InplayMonitor START TIME. This machine is
-# not reliably awake before 09:30, so the supervisor is scheduled for 09:45 and
-# this sits at 10:00 - otherwise every morning between the trigger and the PC
-# actually waking would read as "supervisor never started today" and fire a
-# false alarm. If you move the InplayMonitor schedule, move this with it.
-ACTIVE_FROM = int(os.getenv("WATCHDOG_ACTIVE_FROM", "10"))
+# THE START HOUR MUST BE LATER THAN THE InplayMonitor START TIME, otherwise the
+# gap between the trigger and the PC actually waking reads as "supervisor never
+# started today" and fires a false alarm. If you move the InplayMonitor schedule,
+# move these with it.
+#
+# The schedule is day-dependent since 2026-08-31 (13:00 Mon-Fri, 09:45 Sat-Sun),
+# so the window is too. A single 10:00 start restarted the supervisor ~3 hours
+# early on 21-24 Sep 2026. Weekdays use 14, not 13: hours are whole, and 13 would
+# leave no slack after a 13:00 trigger. Weekday cards are evening-only, so the
+# hour lost costs nothing.
+ACTIVE_FROM_WEEKEND = int(os.getenv("WATCHDOG_ACTIVE_FROM", "10"))
+ACTIVE_FROM_WEEKDAY = int(os.getenv("WATCHDOG_ACTIVE_FROM_WEEKDAY", "14"))
 ACTIVE_TO = int(os.getenv("WATCHDOG_ACTIVE_TO", "1"))     # 10:00 -> 01:00 next day
 RESTART_COOLDOWN_MIN = int(os.getenv("WATCHDOG_COOLDOWN_MIN", "60"))
 OK_STATES = ("finished", "aborted")
@@ -84,9 +90,13 @@ def read_heartbeat():
         return None, None, None
 
 
+def active_from(now):
+    return ACTIVE_FROM_WEEKDAY if now.weekday() < 5 else ACTIVE_FROM_WEEKEND
+
+
 def in_active_window(now=None):
-    h = (now or dt.datetime.now()).hour
-    return h >= ACTIVE_FROM or h < ACTIVE_TO
+    now = now or dt.datetime.now()
+    return now.hour >= active_from(now) or now.hour < ACTIVE_TO
 
 
 def recently_acted():
@@ -122,7 +132,7 @@ def diagnose(now=None):
         # on 2026-08-18: the 08:00 task missed its run while the PC slept, the
         # heartbeat still read 'finished' from 23:25 the night before, and this
         # watchdog stayed silent because the state looked deliberate.
-        if when < now.date() and now.hour >= ACTIVE_FROM:
+        if when < now.date() and now.hour >= active_from(now):
             return ("supervisor never started today",
                     "last beat %s on %s, %.0f min ago" % (state, when, age))
         return None, "state=%s (deliberate), %.0f min old" % (state, age)
