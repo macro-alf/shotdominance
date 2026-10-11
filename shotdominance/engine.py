@@ -27,6 +27,8 @@ class Monitor:
         self.stats_cache = {}    # fid -> {'f':(ts,stat), 'o':(ts,stat)} carry-forward
         self.best_conv = {}      # fid -> highest conviction already alerted
         self.last_conv = {}      # fid -> last conviction, for adaptive polling
+        self.hi_reads = {}       # fid -> readings >= CONV_FIRE_MIN on CHANGED stats
+        self.hi_sig = {}         # fid -> stats signature of the last counted reading
         self.skipped = 0         # fixtures skipped this poll as too dull
         # OBSERVABILITY. Three times in a week the answer to "why did nothing
         # fire?" was a silent data loss nobody was counting: an API timeout that
@@ -72,7 +74,9 @@ class Monitor:
             # bet from `side`, so it would have been settled as the WRONG TEAM.
             # Happened for real on 2026-09-20 (Wolves 0-0 West Brom, 1563177,
             # 1502 @ 2.10) and the row had to be repaired by hand.
-            "last_alert": self.last_alert})
+            "last_alert": self.last_alert,
+            # a restart mid-match must not reset the confirmation count
+            "hi_reads": self.hi_reads, "hi_sig": self.hi_sig})
 
     def load(self):
         d = state.load(config.STATE_PATH)
@@ -86,6 +90,8 @@ class Monitor:
         self.bets.extend(d.get("bets") or [])
         self.offset = d.get("offset", 0)
         self.last_alert.update(d.get("last_alert") or {})
+        self.hi_reads.update(d.get("hi_reads") or {})
+        self.hi_sig.update(d.get("hi_sig") or {})
         print("  state restored: %d acked, %d bets"
               % (len(self.acked), len(self.bets)), flush=True)
 
@@ -621,7 +627,28 @@ class Monitor:
             # for a true 49.6 (Mainz, 2026-08-29 cp75), which reads as a bug
             return False, ("no signal: conviction %.1f below %.0f floor"
                            % (conv, config.CONV_FIRE_MIN))
+        # Alf 2026-10-12: the floor must be confirmed by a second reading on
+        # changed stats (see config.CONV_CONFIRM_READINGS and _count_reading).
+        n = self.hi_reads.get(fid, 0)
+        if n < config.CONV_CONFIRM_READINGS:
+            return False, ("awaiting confirmation: %d of %d readings >= %.0f"
+                           % (n, config.CONV_CONFIRM_READINGS,
+                              config.CONV_FIRE_MIN))
         return True, None
+
+    def _count_reading(self, fid, conv, fstat, ostat, fav_goals, opp_goals):
+        """Count this reading towards confirmation if it is at or above the
+        floor AND its stats differ from the last counted reading. Returns
+        whether it counted."""
+        if conv < config.CONV_FIRE_MIN:
+            return False
+        sig = repr((fav_goals, opp_goals, sorted(fstat.items()),
+                    sorted(ostat.items())))
+        if self.hi_sig.get(fid) == sig:
+            return False                 # same snapshot again: not a new reading
+        self.hi_sig[fid] = sig
+        self.hi_reads[fid] = self.hi_reads.get(fid, 0) + 1
+        return True
 
     # --- one poll -----------------------------------------------------------
     def poll(self):
@@ -647,7 +674,7 @@ class Monitor:
         live = {str((f.get("fixture") or {}).get("id")) for f in fixtures}
         self.settle(live)
         for d in (self.history, self.done, self.open_pos, self.price_cache,
-                  self.stats_cache, self.best_conv):
+                  self.stats_cache, self.best_conv, self.hi_reads, self.hi_sig):
             for k in [k for k in d if k not in live]:
                 del d[k]
 
@@ -811,6 +838,7 @@ class Monitor:
         ev = rules.evaluate(self.history, fid, minute, fstat, ostat,
                             fav_goals, opp_goals)
         self.last_conv[fid] = ev.conv
+        self._count_reading(fid, ev.conv, fstat, ostat, fav_goals, opp_goals)
         if ev.approx:
             self.lost["no_window"] += 1          # judged blind: feed gap
         if ev.n_present == 0:
@@ -928,7 +956,7 @@ class Monitor:
                 score="%d-%d" % (hs, as_), conv=ev.conv, vol_met=ev.vol_met,
                 mom_met=ev.mom_met, n_present=nd, pm=pm, price=price, need=need,
                 winp=rules.win_probability(state, minute, ev.conv, pm)),
-                "conviction")
+                "unconfirmed" if ev.conv >= config.CONV_FIRE_MIN else "conviction")
             return
 
         # ONE ALERT PER CHECKPOINT. Checkpoints are 5 minutes apart, so this is

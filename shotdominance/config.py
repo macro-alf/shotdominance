@@ -407,7 +407,17 @@ CONV_CAP = _f("CONV_CAP", 2.0)
 # (sizing.size reads CONV_FIRE_MIN), so the weakest permissible signal still
 # sizes at STAKE_AT_FLOOR.
 # Alf 2026-09-13: nothing below 60 fires, whatever the price says.
-CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 60.0)
+# RAISED 60 -> 65 on 2026-10-12, on Alf's instruction, together with the
+# confirmation rule below. Replayed over the 132 live alerts 14-Aug..10-Oct:
+# 32 were below 65, 10 more were >= 65 on their first reading, 90 still fire.
+CONV_FIRE_MIN = _f("CONV_FIRE_MIN", 65.0)
+# CONFIRMATION, Alf 2026-10-12: a fixture fires only once it has produced at
+# least this many readings at or above CONV_FIRE_MIN, the current one included.
+# They need not be consecutive. A reading counts only if the stats (or score)
+# CHANGED since the last counted one - the feed often repeats a snapshot for a
+# couple of polls, and carried-forward stats over a gap are a repeat too, so a
+# stale duplicate must not be able to confirm itself.
+CONV_CONFIRM_READINGS = _i("CONV_CONFIRM_READINGS", 2)
 # RAISED 60 -> 70 on 2026-09-07, on Alf's instruction, to give the WEAKEST
 # signal that can fire a stake worth placing. Under half-Kelly with
 # conviction inside p, conviction 69.7 at odds 2.00 sizes to exactly 1000;

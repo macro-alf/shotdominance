@@ -54,8 +54,58 @@ def test_stats_carry_forward_is_independent_per_side():
 def test_fire_decision_conviction_floor():
     mon = engine.Monitor(None, None, set())
     floor = config.CONV_FIRE_MIN
+    assert floor == 65.0
+    mon.hi_reads["1"] = config.CONV_CONFIRM_READINGS        # already confirmed
     assert mon._fire_decision("1", floor - 1)[0] is False   # below the floor
     assert mon._fire_decision("1", floor)[0] is True        # at the floor fires
+
+
+# --- confirmation (Alf 2026-10-12) ------------------------------------------
+STATS = {"xg": 1.0, "shots": 10, "sot": 3, "box": 5}
+OPP = {"xg": 0.2, "shots": 2, "sot": 0, "box": 1}
+
+
+def test_one_reading_at_the_floor_does_not_fire():
+    mon = engine.Monitor(None, None, set())
+    assert mon._count_reading("1", 70, STATS, OPP, 0, 0)
+    fire, why = mon._fire_decision("1", 70)
+    assert fire is False and "awaiting confirmation: 1 of 2" in why
+
+
+def test_a_repeated_snapshot_does_not_confirm_itself():
+    """The feed repeats a snapshot for a couple of polls; only changed stats count."""
+    mon = engine.Monitor(None, None, set())
+    assert mon._count_reading("1", 70, dict(STATS), dict(OPP), 0, 0)
+    assert not mon._count_reading("1", 72, dict(STATS), dict(OPP), 0, 0)
+    assert mon._fire_decision("1", 72)[0] is False
+
+
+def test_two_non_consecutive_readings_on_changed_stats_fire():
+    mon = engine.Monitor(None, None, set())
+    assert mon._count_reading("1", 66, STATS, OPP, 0, 0)
+    assert not mon._count_reading("1", 58, dict(STATS, shots=11), OPP, 0, 0)  # below
+    assert mon._count_reading("1", 67, dict(STATS, shots=12), OPP, 0, 0)
+    assert mon._fire_decision("1", 67)[0] is True
+
+
+def test_readings_are_counted_per_fixture():
+    mon = engine.Monitor(None, None, set())
+    mon._count_reading("1", 70, STATS, OPP, 0, 0)
+    mon._count_reading("2", 70, dict(STATS, shots=11), OPP, 0, 0)
+    assert mon._fire_decision("1", 70)[0] is False
+    assert mon._fire_decision("2", 70)[0] is False
+
+
+def test_confirmation_survives_a_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "STATE_PATH", str(tmp_path / "state3.json"))
+    mon = engine.Monitor(None, None, set())
+    mon._count_reading("1", 70, STATS, OPP, 0, 0)
+    mon.save()
+    mon2 = engine.Monitor(None, None, set())
+    mon2.load()
+    assert not mon2._count_reading("1", 70, STATS, OPP, 0, 0)   # same snapshot
+    assert mon2._count_reading("1", 70, dict(STATS, sot=4), OPP, 0, 0)
+    assert mon2._fire_decision("1", 70)[0] is True
 
 
 def test_fire_decision_repeats_at_every_checkpoint():
@@ -67,6 +117,7 @@ def test_fire_decision_repeats_at_every_checkpoint():
     """
     mon = engine.Monitor(None, None, set())
     floor = config.CONV_FIRE_MIN
+    mon.hi_reads["1"] = config.CONV_CONFIRM_READINGS        # already confirmed
     assert mon._fire_decision("1", floor + 5)[0] is True
     mon.best_conv["1"] = floor + 5                      # already alerted this high
     assert mon._fire_decision("1", floor + 5)[0] is True    # equal -> STILL fires
